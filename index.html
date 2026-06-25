@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BabyFoot LEMO</title>
+  <meta name="description" content="BabyFoot LEMO : matchs standards, archives, classements et générateur de tournoi." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="background-shield"></div>
+
+  <div class="app-shell">
+    <header class="hero-card">
+      <div class="brand-row">
+        <img class="brand-logo" src="assets/lemo-logo.svg" alt="LEMO" />
+        <div>
+          <p class="eyebrow">Teams · BabyFoot</p>
+          <h1>BabyFoot LEMO</h1>
+        </div>
+      </div>
+
+      <p class="hero-text">
+        Ajoute les joueurs, lance un match standard ou génère un tournoi. Les scores, les victoires,
+        les archives et les classements restent propres, même quand les frappes ne le sont pas.
+      </p>
+
+      <p class="hero-joke">
+        Certains cassent le babyfoot, joueurs tumultueux. D'autres envoient des frappes de forain.
+        Certains ont un ego surdimensionné qu'il faudrait recadrer, tandis que d'autres espèrent juste toucher la balle.
+        Ici, au moins, tout finit proprement dans les stats.
+      </p>
+
+      <div class="hero-tags">
+        <span>Match standard</span>
+        <span>Score final direct</span>
+        <span>Archives</span>
+        <span>Classements</span>
+        <span>Tournoi</span>
+      </div>
+
+      <div id="syncStatus" class="sync-status info">Initialisation de la sauvegarde...</div>
+    </header>
+
+    <main class="grid-layout">
+      <section class="panel section players-section">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Participants</p>
+            <h2>Joueurs</h2>
+          </div>
+          <button class="ghost-button danger" id="clearPlayersBtn" type="button">Nettoyer</button>
+        </div>
+
+        <form class="add-player" id="addPlayerForm">
+          <label class="sr-only" for="playerName">Prénom</label>
+          <input id="playerName" name="playerName" type="text" placeholder="Ajouter un prénom" autocomplete="off" maxlength="24" />
+          <button type="submit">Ajouter</button>
+        </form>
+
+        <div id="playersList" class="pill-list" aria-live="polite"></div>
+      </section>
+
+      <section class="panel section standard-match-section">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Match standard</p>
+            <h2>Score final</h2>
+          </div>
+          <button class="ghost-button" id="randomTeamsBtn" type="button">Équipes aléatoires</button>
+        </div>
+
+        <div class="segmented-group" role="group" aria-label="Mode de match standard">
+          <button type="button" class="segment active" data-standard-mode="1v1">1v1</button>
+          <button type="button" class="segment" data-standard-mode="2v2">2v2</button>
+        </div>
+
+        <div class="teams-grid">
+          <div class="team-card">
+            <div class="team-heading">
+              <span class="team-badge">A</span>
+              <strong>Équipe A</strong>
+            </div>
+            <select id="teamA1" aria-label="Équipe A joueur 1"></select>
+            <select id="teamA2" class="standard-double-only" aria-label="Équipe A joueur 2"></select>
+            <label class="score-final-label">
+              Score final A
+              <input id="standardScoreA" type="number" min="0" step="1" value="0" inputmode="numeric" />
+            </label>
+          </div>
+
+          <div class="team-card">
+            <div class="team-heading">
+              <span class="team-badge">B</span>
+              <strong>Équipe B</strong>
+            </div>
+            <select id="teamB1" aria-label="Équipe B joueur 1"></select>
+            <select id="teamB2" class="standard-double-only" aria-label="Équipe B joueur 2"></select>
+            <label class="score-final-label">
+              Score final B
+              <input id="standardScoreB" type="number" min="0" step="1" value="0" inputmode="numeric" />
+            </label>
+          </div>
+        </div>
+
+        <div class="bet-card">
+          <div>
+            <p class="eyebrow">Pari vainqueur</p>
+            <h3>Pronostic</h3>
+          </div>
+          <div class="bet-grid">
+            <label>
+              Vainqueur prévu
+              <select id="betWinner">
+                <option value="none">Aucun pari</option>
+                <option value="A">Équipe A</option>
+                <option value="B">Équipe B</option>
+              </select>
+            </label>
+            <label>
+              Mise / enjeu
+              <input id="betStake" type="text" placeholder="Ex. café, croissant, 5 CHF" maxlength="40" />
+            </label>
+          </div>
+        </div>
+
+        <button class="primary-button full" id="saveStandardMatchBtn" type="button">Enregistrer le résultat</button>
+        <p class="form-message" id="standardMessage" role="status"></p>
+        <div class="winner-preview hidden" id="standardWinnerPreview"></div>
+      </section>
+
+      <section class="panel section standard-stats-section">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Classement standard</p>
+            <h2>Stats joueurs</h2>
+          </div>
+        </div>
+        <div id="standardLeaderboard" class="leaderboard empty-state">Aucun match standard enregistré.</div>
+      </section>
+
+      <section class="panel section standard-history-section">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Archives standard</p>
+            <h2>Historique matchs</h2>
+          </div>
+          <button class="ghost-button danger" id="clearStandardHistoryBtn" type="button">Vider tout</button>
+        </div>
+        <div id="standardHistoryList" class="history-list empty-state">Aucun résultat enregistré.</div>
+      </section>
+
+      <section class="panel section tournament-section">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Tournoi</p>
+            <h2>Générateur de tournoi</h2>
+          </div>
+          <button class="ghost-button danger" id="clearTournamentBtn" type="button">Reset tournoi</button>
+        </div>
+
+        <div class="tournament-controls">
+          <div class="segmented-group compact" role="group" aria-label="Mode du tournoi">
+            <button type="button" class="segment active" data-tournament-mode="1v1">1v1</button>
+            <button type="button" class="segment" data-tournament-mode="2v2">2v2</button>
+          </div>
+
+          <div class="segmented-group compact" role="group" aria-label="Format du tournoi">
+            <button type="button" class="segment active" data-tournament-format="knockout">Élimination</button>
+            <button type="button" class="segment" data-tournament-format="league">Championnat</button>
+          </div>
+
+          <button class="primary-button full" id="generateTournamentBtn" type="button">Générer le tournoi</button>
+          <p class="form-message" id="tournamentMessage" role="status"></p>
+        </div>
+
+        <div class="tournament-help">
+          <strong>Principe :</strong>
+          <span>le tournoi utilise les joueurs déjà ajoutés. Clique simplement sur le gagnant du match. L’arbre ou le championnat se met à jour automatiquement.</span>
+        </div>
+
+        <div id="tournamentBoard" class="tournament-board empty-state">Aucun tournoi généré pour le moment.</div>
+      </section>
+
+      <section class="panel section tournament-stats-section">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Classement tournoi</p>
+            <h2>Stats tournoi</h2>
+          </div>
+        </div>
+        <div id="tournamentLeaderboard" class="leaderboard empty-state">Aucune victoire de tournoi enregistrée.</div>
+      </section>
+
+      <section class="panel section tournament-history-section">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Archives tournoi</p>
+            <h2>Historique tournoi</h2>
+          </div>
+          <button class="ghost-button danger" id="clearTournamentArchiveBtn" type="button">Vider tout</button>
+        </div>
+        <div id="tournamentHistoryList" class="history-list empty-state">Aucun résultat de tournoi enregistré.</div>
+      </section>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
