@@ -73,3 +73,11 @@ Dans `config.js` :
 ## Important sécurité
 
 Les boutons de suppression ont été retirés de l'interface. Avec une clé Supabase publishable côté navigateur, un utilisateur très technique pourrait toujours tenter de modifier les données directement s'il connaît le projet. Pour une protection stricte, il faudra ensuite ajouter une authentification ou passer par des fonctions Supabase contrôlées côté serveur.
+
+
+## Correctif onglets tournois/championnats
+
+- L’onglet `Matchs` contient uniquement les joueurs, les matchs directs 1v1/2v2 et l’historique des matchs.
+- L’onglet `Tournois & championnats` contient les tournois, championnats et leurs historiques séparés.
+- Un tournoi ou championnat généré peut rester en cours sans bloquer la navigation.
+- Les boutons `Annuler le tournoi en cours` et `Annuler le championnat en cours` suppriment uniquement le brouillon en cours. Ils ne suppriment pas l’historique enregistré.
