@@ -498,3 +498,18 @@ input:focus, select:focus {
   .tournament-actions button { flex: 1; }
   .championship-match { grid-template-columns: 1fr; }
 }
+
+.competition-players-section { grid-column: span 12; }
+.competition-archive-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.competition-controls { grid-template-columns: minmax(230px, 1fr) auto auto; }
+.ghost-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 1180px) {
+  .competition-players-section { grid-column: span 12; }
+  .competition-controls { grid-template-columns: 1fr; }
+  .competition-archive-grid { grid-template-columns: 1fr; }
+}
