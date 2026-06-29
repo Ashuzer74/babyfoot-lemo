@@ -40,7 +40,7 @@ insert into public.babyfoot_state (id, data, updated_at)
 values (
   'main',
   '{
-    "players": ["Hugo", "Maxime", "Antonella", "Pasquale"],
+    "players": ["Hugo", "Maxime", "Romain", "Giuseppe"],
     "standardMode": "1v1",
     "standardHistory": [],
     "tournamentConfig": {
