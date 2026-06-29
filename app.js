@@ -15,7 +15,7 @@ let isSaving = false;
 let lastRemoteUpdatedAt = null;
 
 const defaultState = {
-  players: ["Hugo", "Maxime", "Romain", "Giuseppe"],
+  players: ["Hugo", "Maxime", "Romain", "Angel"],
   activePage: "matches",
   standardMode: "1v1",
   standardHistory: [],
@@ -37,11 +37,13 @@ let state = cloneDefaultState();
 const el = {
   syncStatus: document.getElementById("syncStatus"),
   pageMatches: document.getElementById("pageMatches"),
+  pageCompetitions: document.getElementById("pageCompetitions"),
   pageStats: document.getElementById("pageStats"),
 
   addPlayerForm: document.getElementById("addPlayerForm"),
   playerName: document.getElementById("playerName"),
   playersList: document.getElementById("playersList"),
+  competitionPlayersList: document.getElementById("competitionPlayersList"),
 
   randomTeamsBtn: document.getElementById("randomTeamsBtn"),
   saveStandardMatchBtn: document.getElementById("saveStandardMatchBtn"),
@@ -57,11 +59,13 @@ const el = {
   standardHistoryList: document.getElementById("standardHistoryList"),
 
   generateTournamentBtn: document.getElementById("generateTournamentBtn"),
+  clearTournamentBtn: document.getElementById("clearTournamentBtn"),
   tournamentBoard: document.getElementById("tournamentBoard"),
   tournamentMessage: document.getElementById("tournamentMessage"),
   tournamentHistoryList: document.getElementById("tournamentHistoryList"),
 
   generateChampionshipBtn: document.getElementById("generateChampionshipBtn"),
+  clearChampionshipBtn: document.getElementById("clearChampionshipBtn"),
   championshipBoard: document.getElementById("championshipBoard"),
   championshipMessage: document.getElementById("championshipMessage"),
   championshipHistoryList: document.getElementById("championshipHistoryList"),
@@ -87,7 +91,7 @@ function normalizeState(rawState) {
     ...base,
     ...parsed,
     players: uniquePlayers(Array.isArray(parsed.players) ? parsed.players : base.players),
-    activePage: ["matches", "stats"].includes(parsed.activePage) ? parsed.activePage : "matches",
+    activePage: ["matches", "competitions", "stats"].includes(parsed.activePage) ? parsed.activePage : "matches",
     standardMode: ["1v1", "2v2"].includes(parsed.standardMode) ? parsed.standardMode : "1v1",
     standardHistory: Array.isArray(parsed.standardHistory) ? parsed.standardHistory.map(normalizeStandardMatch).filter(Boolean) : [],
     tournamentConfig: {
@@ -340,8 +344,9 @@ function renderPages() {
   document.querySelectorAll("[data-page]").forEach(button => {
     button.classList.toggle("active", button.dataset.page === state.activePage);
   });
-  el.pageMatches.classList.toggle("active", state.activePage === "matches");
-  el.pageStats.classList.toggle("active", state.activePage === "stats");
+  el.pageMatches?.classList.toggle("active", state.activePage === "matches");
+  el.pageCompetitions?.classList.toggle("active", state.activePage === "competitions");
+  el.pageStats?.classList.toggle("active", state.activePage === "stats");
 }
 
 function renderModes() {
@@ -360,20 +365,26 @@ function renderModes() {
 }
 
 function renderPlayers() {
-  el.playersList.innerHTML = "";
+  renderPlayerPills(el.playersList, "Ajoute au moins deux joueurs.");
+  renderPlayerPills(el.competitionPlayersList, "Ajoute les joueurs dans l’onglet Matchs.");
+}
+
+function renderPlayerPills(container, emptyMessage) {
+  if (!container) return;
+  container.innerHTML = "";
 
   if (!state.players.length) {
-    el.playersList.textContent = "Ajoute au moins deux joueurs.";
-    el.playersList.classList.add("empty-state");
+    container.textContent = emptyMessage;
+    container.classList.add("empty-state");
     return;
   }
 
-  el.playersList.classList.remove("empty-state");
+  container.classList.remove("empty-state");
   state.players.forEach(name => {
     const pill = document.createElement("div");
     pill.className = "player-pill";
     pill.textContent = name;
-    el.playersList.appendChild(pill);
+    container.appendChild(pill);
   });
 }
 
@@ -547,6 +558,12 @@ function generateTournament() {
   render();
 }
 
+function clearCurrentTournament() {
+  state.tournament = null;
+  setTournamentMessage("Tournoi en cours annulé. L’historique enregistré est conservé.");
+  render();
+}
+
 function buildKnockoutRound(teams, roundNumber, shouldShuffle = false) {
   const bracketTeams = shouldShuffle ? shuffle([...teams]) : [...teams];
   const power = nextPowerOfTwo(bracketTeams.length);
@@ -575,6 +592,7 @@ function buildKnockoutRound(teams, roundNumber, shouldShuffle = false) {
 
 function renderTournament() {
   const tournament = state.tournament;
+  if (el.clearTournamentBtn) el.clearTournamentBtn.disabled = !tournament;
   if (!tournament) {
     el.tournamentBoard.className = "tournament-board empty-state";
     el.tournamentBoard.textContent = "Aucun tournoi généré pour le moment.";
@@ -768,8 +786,15 @@ function generateChampionship() {
   render();
 }
 
+function clearCurrentChampionship() {
+  state.championship = null;
+  setChampionshipMessage("Championnat en cours annulé. L’historique enregistré est conservé.");
+  render();
+}
+
 function renderChampionship() {
   const championship = state.championship;
+  if (el.clearChampionshipBtn) el.clearChampionshipBtn.disabled = !championship;
   if (!championship) {
     el.championshipBoard.className = "championship-board empty-state";
     el.championshipBoard.textContent = "Aucun championnat généré pour le moment.";
@@ -1397,7 +1422,9 @@ teamSelects.forEach(select => select.addEventListener("change", renderStandardPr
 el.randomTeamsBtn.addEventListener("click", chooseRandomTeams);
 el.saveStandardMatchBtn.addEventListener("click", saveStandardMatch);
 el.generateTournamentBtn.addEventListener("click", generateTournament);
+el.clearTournamentBtn?.addEventListener("click", clearCurrentTournament);
 el.generateChampionshipBtn.addEventListener("click", generateChampionship);
+el.clearChampionshipBtn?.addEventListener("click", clearCurrentChampionship);
 
 async function initializeApp() {
   el.standardMatchDate.value = todayInputValue();
