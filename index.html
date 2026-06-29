@@ -38,7 +38,8 @@
       </div>
 
       <nav class="app-tabs" aria-label="Navigation principale">
-        <button type="button" class="tab-button active" data-page="matches">Matchs & tournois</button>
+        <button type="button" class="tab-button active" data-page="matches">Matchs</button>
+        <button type="button" class="tab-button" data-page="competitions">Tournois & championnats</button>
         <button type="button" class="tab-button" data-page="stats">Statistiques</button>
       </nav>
 
@@ -118,6 +119,31 @@
             <div class="winner-preview hidden" id="standardWinnerPreview"></div>
           </section>
 
+          <section class="panel section archive-section">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Archives</p>
+                <h2>Historique des matchs</h2>
+              </div>
+            </div>
+            <div id="standardHistoryList" class="history-list empty-state">Aucun résultat enregistré.</div>
+          </section>
+        </div>
+      </section>
+
+      <section id="pageCompetitions" class="page">
+        <div class="grid-layout">
+          <section class="panel section competition-players-section">
+            <div class="section-title">
+              <div>
+                <p class="eyebrow">Participants</p>
+                <h2>Joueurs disponibles</h2>
+              </div>
+            </div>
+            <p class="muted-note">Les tournois et championnats utilisent les joueurs ajoutés dans l’onglet Matchs.</p>
+            <div id="competitionPlayersList" class="pill-list" aria-live="polite"></div>
+          </section>
+
           <section class="panel section tournament-section">
             <div class="section-title">
               <div>
@@ -126,15 +152,16 @@
               </div>
             </div>
 
-            <div class="compact-controls">
+            <div class="compact-controls competition-controls">
               <div class="segmented-group compact" role="group" aria-label="Mode du tournoi">
                 <button type="button" class="segment active" data-tournament-mode="1v1">1v1</button>
                 <button type="button" class="segment" data-tournament-mode="2v2">2v2</button>
               </div>
               <button class="primary-button" id="generateTournamentBtn" type="button">Générer un tournoi</button>
+              <button class="ghost-button" id="clearTournamentBtn" type="button">Annuler le tournoi en cours</button>
             </div>
 
-            <p class="muted-note">Clique sur le gagnant de chaque match. Le tour suivant se génère automatiquement.</p>
+            <p class="muted-note">Tu peux générer un tournoi pour tester, changer d’onglet, puis revenir plus tard. Aucun vainqueur n’est obligatoire tant que tu ne cliques pas sur un gagnant.</p>
             <p class="form-message" id="tournamentMessage" role="status"></p>
             <div id="tournamentBoard" class="tournament-board empty-state">Aucun tournoi généré pour le moment.</div>
           </section>
@@ -147,12 +174,13 @@
               </div>
             </div>
 
-            <div class="compact-controls">
+            <div class="compact-controls competition-controls">
               <div class="segmented-group compact" role="group" aria-label="Mode du championnat">
                 <button type="button" class="segment active" data-championship-mode="1v1">1v1</button>
                 <button type="button" class="segment" data-championship-mode="2v2">2v2</button>
               </div>
               <button class="primary-button" id="generateChampionshipBtn" type="button">Générer un championnat</button>
+              <button class="ghost-button" id="clearChampionshipBtn" type="button">Annuler le championnat en cours</button>
             </div>
 
             <p class="muted-note">Le championnat peut se jouer sur plusieurs jours. Rentre la date et le score de chaque match au fur et à mesure.</p>
@@ -164,15 +192,11 @@
             <div class="section-title">
               <div>
                 <p class="eyebrow">Archives</p>
-                <h2>Historique lecture seule</h2>
+                <h2>Historique tournois & championnats</h2>
               </div>
             </div>
 
-            <div class="archive-grid">
-              <div>
-                <h3>Matchs</h3>
-                <div id="standardHistoryList" class="history-list empty-state">Aucun résultat enregistré.</div>
-              </div>
+            <div class="archive-grid competition-archive-grid">
               <div>
                 <h3>Tournois</h3>
                 <div id="tournamentHistoryList" class="history-list empty-state">Aucun résultat de tournoi enregistré.</div>
