@@ -976,7 +976,6 @@ function renderStats() {
   const activeRows = rows.filter(row => row.played > 0);
   const scoredRows = rows.filter(row => row.scoredMatches > 0);
 
-
   renderRanking(el.eloRanking, activeRows.slice().sort((a, b) => b.elo - a.elo || b.points - a.points || a.name.localeCompare(b.name)), row => ({
     title: row.name,
     detail: `${row.played} match(s) · dernier mouvement ${formatSigned(row.lastEloDelta || 0)}`,
@@ -1005,6 +1004,7 @@ function renderStats() {
 }
 
 function renderRanking(container, rows, mapRow) {
+  if (!container) return;
   if (!rows.length) {
     container.className = "leaderboard empty-state";
     container.textContent = container.id.includes("goals") ? "Aucun score enregistré." : "Aucun match enregistré.";
