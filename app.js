@@ -15,7 +15,7 @@ let isSaving = false;
 let lastRemoteUpdatedAt = null;
 
 const defaultState = {
-  players: ["Hugo", "Maxime", "Antonella", "Pasquale"],
+  players: ["Hugo", "Maxime", "Romain", "Giuseppe"],
   activePage: "matches",
   standardMode: "1v1",
   standardHistory: [],
@@ -66,7 +66,6 @@ const el = {
   championshipMessage: document.getElementById("championshipMessage"),
   championshipHistoryList: document.getElementById("championshipHistoryList"),
 
-  pointsRanking: document.getElementById("pointsRanking"),
   eloRanking: document.getElementById("eloRanking"),
   winRateRanking: document.getElementById("winRateRanking"),
   goalsForRanking: document.getElementById("goalsForRanking"),
@@ -977,11 +976,6 @@ function renderStats() {
   const activeRows = rows.filter(row => row.played > 0);
   const scoredRows = rows.filter(row => row.scoredMatches > 0);
 
-  renderRanking(el.pointsRanking, activeRows.slice().sort(sortPointRows), row => ({
-    title: row.name,
-    detail: `${row.wins} V · ${row.losses} D · ${row.played} match(s) · Diff ${formatSigned(row.goalDiff)}`,
-    value: `${row.points} pts`
-  }));
 
   renderRanking(el.eloRanking, activeRows.slice().sort((a, b) => b.elo - a.elo || b.points - a.points || a.name.localeCompare(b.name)), row => ({
     title: row.name,
