@@ -5,6 +5,8 @@ const SUPABASE_ROW_ID = "main";
 const REFRESH_INTERVAL_MS = 15000;
 const BASE_ELO = 1000;
 const ELO_K_FACTOR = 32;
+const MIN_ELO_MATCHES = 5;
+const ADMIN_SESSION_KEY = "lemo_babyfoot_admin_unlocked";
 
 const supabaseConfig = window.BABYFOOT_CONFIG || {};
 let supabaseClient = null;
@@ -13,12 +15,20 @@ let appStarted = false;
 let saveTimer = null;
 let isSaving = false;
 let lastRemoteUpdatedAt = null;
+let selectedArchiveMonth = currentMonthKey();
+let selectedStatsMonth = currentMonthKey();
+let adminUnlocked = sessionStorage.getItem(ADMIN_SESSION_KEY) === "1";
+let archiveUiMessage = "";
 
 const defaultState = {
   players: ["Hugo", "Maxime", "Romain", "Angel"],
   activePage: "matches",
   standardMode: "1v1",
   standardHistory: [],
+  competitionSelection: {
+    tournament: ["Hugo", "Maxime", "Romain", "Angel"],
+    championship: ["Hugo", "Maxime", "Romain", "Angel"]
+  },
   tournamentConfig: {
     mode: "1v1",
     format: "knockout"
@@ -43,7 +53,8 @@ const el = {
   addPlayerForm: document.getElementById("addPlayerForm"),
   playerName: document.getElementById("playerName"),
   playersList: document.getElementById("playersList"),
-  competitionPlayersList: document.getElementById("competitionPlayersList"),
+  tournamentPlayerSelection: document.getElementById("tournamentPlayerSelection"),
+  championshipPlayerSelection: document.getElementById("championshipPlayerSelection"),
 
   randomTeamsBtn: document.getElementById("randomTeamsBtn"),
   saveStandardMatchBtn: document.getElementById("saveStandardMatchBtn"),
@@ -57,6 +68,9 @@ const el = {
   standardScoreA: document.getElementById("standardScoreA"),
   standardScoreB: document.getElementById("standardScoreB"),
   standardHistoryList: document.getElementById("standardHistoryList"),
+  archiveMonthFilter: document.getElementById("archiveMonthFilter"),
+  adminModeBtn: document.getElementById("adminModeBtn"),
+  archiveFreezeNote: document.getElementById("archiveFreezeNote"),
 
   generateTournamentBtn: document.getElementById("generateTournamentBtn"),
   clearTournamentBtn: document.getElementById("clearTournamentBtn"),
@@ -70,6 +84,10 @@ const el = {
   championshipMessage: document.getElementById("championshipMessage"),
   championshipHistoryList: document.getElementById("championshipHistoryList"),
 
+  statsMonthTabs: document.getElementById("statsMonthTabs"),
+  statsSeasonStatus: document.getElementById("statsSeasonStatus"),
+  seasonChampion: document.getElementById("seasonChampion"),
+  eloQualificationNote: document.getElementById("eloQualificationNote"),
   eloRanking: document.getElementById("eloRanking"),
   winRateRanking: document.getElementById("winRateRanking"),
   goalsForRanking: document.getElementById("goalsForRanking"),
@@ -86,14 +104,27 @@ function cloneDefaultState() {
 function normalizeState(rawState) {
   const parsed = rawState && typeof rawState === "object" ? rawState : {};
   const base = cloneDefaultState();
+  const players = uniquePlayers(Array.isArray(parsed.players) ? parsed.players : base.players);
+  const canonicalPlayers = new Map(players.map(name => [name.toLowerCase(), name]));
+  const normalizeSelection = (values, fallbackToAll) => {
+    if (!Array.isArray(values)) return fallbackToAll ? [...players] : [];
+    return uniquePlayers(values)
+      .map(name => canonicalPlayers.get(name.toLowerCase()))
+      .filter(Boolean);
+  };
+  const hasCompetitionSelection = parsed.competitionSelection && typeof parsed.competitionSelection === "object";
 
   return {
     ...base,
     ...parsed,
-    players: uniquePlayers(Array.isArray(parsed.players) ? parsed.players : base.players),
+    players,
     activePage: ["matches", "competitions", "stats"].includes(parsed.activePage) ? parsed.activePage : "matches",
-    standardMode: ["1v1", "2v2"].includes(parsed.standardMode) ? parsed.standardMode : "1v1",
+    standardMode: ["1v1", "1v2", "2v2"].includes(parsed.standardMode) ? parsed.standardMode : "1v1",
     standardHistory: Array.isArray(parsed.standardHistory) ? parsed.standardHistory.map(normalizeStandardMatch).filter(Boolean) : [],
+    competitionSelection: {
+      tournament: normalizeSelection(parsed.competitionSelection?.tournament, !hasCompetitionSelection),
+      championship: normalizeSelection(parsed.competitionSelection?.championship, !hasCompetitionSelection)
+    },
     tournamentConfig: {
       ...base.tournamentConfig,
       ...(parsed.tournamentConfig || {}),
@@ -118,7 +149,7 @@ function normalizeStandardMatch(match) {
   const winner = scoreA > scoreB ? "A" : "B";
   return {
     id: match.id || randomId(),
-    mode: match.mode === "2v2" ? "2v2" : "1v1",
+    mode: ["1v1", "1v2", "2v2"].includes(match.mode) ? match.mode : "1v1",
     teams: {
       A: Array.isArray(match.teams.A) ? match.teams.A : [],
       B: Array.isArray(match.teams.B) ? match.teams.B : []
@@ -326,16 +357,22 @@ function setSyncStatus(message, type = "info") {
 
 function render(options = {}) {
   state.players = uniquePlayers(state.players);
+  normalizeCompetitionSelectionsInPlace();
+  autoAdvanceKnockout();
   renderPages();
   renderModes();
   renderPlayers();
+  renderCompetitionSelections();
   renderSelects();
+  configureCurrentMonthDateInput();
   renderStandardPreview();
+  renderArchiveControls();
   renderStandardHistory();
   renderTournament();
   renderTournamentHistory();
   renderChampionship();
   renderChampionshipHistory();
+  renderStatsSeasonTabs();
   renderStats();
   if (!options.skipSave) saveState();
 }
@@ -353,9 +390,9 @@ function renderModes() {
   document.querySelectorAll("[data-standard-mode]").forEach(button => {
     button.classList.toggle("active", button.dataset.standardMode === state.standardMode);
   });
-  document.querySelectorAll(".standard-double-only").forEach(node => {
-    node.classList.toggle("hidden", state.standardMode !== "2v2");
-  });
+  const sizes = getStandardTeamSizes(state.standardMode);
+  el.teamA2?.classList.toggle("hidden", sizes.A < 2);
+  el.teamB2?.classList.toggle("hidden", sizes.B < 2);
   document.querySelectorAll("[data-tournament-mode]").forEach(button => {
     button.classList.toggle("active", button.dataset.tournamentMode === state.tournamentConfig.mode);
   });
@@ -366,7 +403,6 @@ function renderModes() {
 
 function renderPlayers() {
   renderPlayerPills(el.playersList, "Ajoute au moins deux joueurs.");
-  renderPlayerPills(el.competitionPlayersList, "Ajoute les joueurs dans l’onglet Matchs.");
 }
 
 function renderPlayerPills(container, emptyMessage) {
@@ -388,6 +424,61 @@ function renderPlayerPills(container, emptyMessage) {
   });
 }
 
+
+function normalizeCompetitionSelectionsInPlace() {
+  if (!state.competitionSelection || typeof state.competitionSelection !== "object") {
+    state.competitionSelection = { tournament: [...state.players], championship: [...state.players] };
+  }
+  ["tournament", "championship"].forEach(type => {
+    const selected = Array.isArray(state.competitionSelection[type]) ? state.competitionSelection[type] : [];
+    const selectedKeys = new Set(selected.map(name => normalizeName(name).toLowerCase()));
+    state.competitionSelection[type] = state.players.filter(name => selectedKeys.has(name.toLowerCase()));
+  });
+}
+
+function renderCompetitionSelections() {
+  renderCompetitionSelectionList(el.tournamentPlayerSelection, "tournament");
+  renderCompetitionSelectionList(el.championshipPlayerSelection, "championship");
+}
+
+function renderCompetitionSelectionList(container, type) {
+  if (!container) return;
+  if (!state.players.length) {
+    container.className = "player-check-list empty-state";
+    container.textContent = "Ajoute d’abord les joueurs dans l’onglet Matchs.";
+    return;
+  }
+
+  const selected = new Set(state.competitionSelection[type] || []);
+  container.className = "player-check-list";
+  container.innerHTML = state.players.map(name => `
+    <label class="player-check">
+      <input type="checkbox" value="${escapeHtml(name)}" data-competition-player="${type}" ${selected.has(name) ? "checked" : ""} />
+      <span>${escapeHtml(name)}</span>
+    </label>`).join("");
+
+  container.querySelectorAll("[data-competition-player]").forEach(input => {
+    input.addEventListener("change", () => {
+      const values = new Set(state.competitionSelection[type] || []);
+      if (input.checked) values.add(input.value);
+      else values.delete(input.value);
+      state.competitionSelection[type] = state.players.filter(name => values.has(name));
+      saveState();
+    });
+  });
+}
+
+function setCompetitionSelection(type, selectAll) {
+  if (!["tournament", "championship"].includes(type)) return;
+  state.competitionSelection[type] = selectAll ? [...state.players] : [];
+  render();
+}
+
+function getSelectedCompetitionPlayers(type) {
+  const selected = new Set(state.competitionSelection?.[type] || []);
+  return state.players.filter(name => selected.has(name));
+}
+
 function renderSelects() {
   const values = teamSelects.map(select => select.value);
 
@@ -407,6 +498,12 @@ function selectedStandardTeams() {
   };
 }
 
+function getStandardTeamSizes(mode = state.standardMode) {
+  if (mode === "1v2") return { A: 1, B: 2 };
+  if (mode === "2v2") return { A: 2, B: 2 };
+  return { A: 1, B: 1 };
+}
+
 function renderStandardPreview() {
   const scoreA = parseScore(el.standardScoreA.value);
   const scoreB = parseScore(el.standardScoreB.value);
@@ -416,8 +513,8 @@ function renderStandardPreview() {
   if (scoreA === scoreB) return;
 
   const teams = selectedStandardTeams();
-  const required = state.standardMode === "2v2" ? 2 : 1;
-  if (teams.A.length !== required || teams.B.length !== required) return;
+  const sizes = getStandardTeamSizes();
+  if (teams.A.length !== sizes.A || teams.B.length !== sizes.B) return;
 
   const winnerSide = scoreA > scoreB ? "A" : "B";
   el.standardWinnerPreview.classList.remove("hidden");
@@ -425,10 +522,10 @@ function renderStandardPreview() {
 }
 
 function validateStandardMatch(teams, scoreA, scoreB) {
-  const required = state.standardMode === "2v2" ? 2 : 1;
+  const sizes = getStandardTeamSizes();
 
-  if (teams.A.length !== required || teams.B.length !== required) {
-    return `Sélectionne ${required} joueur(s) par équipe.`;
+  if (teams.A.length !== sizes.A || teams.B.length !== sizes.B) {
+    return `Sélectionne ${sizes.A} joueur(s) dans l’équipe A et ${sizes.B} dans l’équipe B.`;
   }
 
   const allPlayers = [...teams.A, ...teams.B];
@@ -437,6 +534,9 @@ function validateStandardMatch(teams, scoreA, scoreB) {
   }
 
   if (scoreA === scoreB) return "Le score ne peut pas être égal. Il faut un gagnant.";
+  const matchDate = el.standardMatchDate.value || todayInputValue();
+  if (monthKeyFromValue(matchDate) !== currentMonthKey()) return "Les mois précédents sont figés. Enregistre le match dans le mois en cours.";
+  if (matchDate > todayInputValue()) return "La date du match ne peut pas être dans le futur.";
   return "";
 }
 
@@ -467,15 +567,40 @@ function saveStandardMatch() {
   render();
 }
 
+function renderArchiveControls() {
+  if (!el.archiveMonthFilter) return;
+  const months = getStandardArchiveMonthKeys();
+  if (!months.includes(selectedArchiveMonth)) selectedArchiveMonth = months[0] || currentMonthKey();
+  el.archiveMonthFilter.innerHTML = months
+    .map(month => `<option value="${month}">${escapeHtml(formatMonthLabel(month))}</option>`)
+    .join("");
+  el.archiveMonthFilter.value = selectedArchiveMonth;
+  el.adminModeBtn.textContent = adminUnlocked ? "Quitter le mode admin" : "Activer le mode admin";
+
+  const frozen = isFrozenMonth(selectedArchiveMonth);
+  const baseMessage = frozen
+    ? "Mois figé : les résultats sont consultables mais ne peuvent plus être modifiés ou supprimés."
+    : adminUnlocked
+      ? "Mode admin actif : les matchs du mois en cours peuvent être supprimés."
+      : "Mois en cours : active le mode admin pour supprimer un résultat erroné.";
+  el.archiveFreezeNote.textContent = archiveUiMessage || baseMessage;
+  archiveUiMessage = "";
+}
+
 function renderStandardHistory() {
-  if (!state.standardHistory.length) {
+  const rows = state.standardHistory
+    .filter(item => monthKeyFromValue(item.playedAt || item.createdAt) === selectedArchiveMonth)
+    .sort((a, b) => eventTimestamp(b) - eventTimestamp(a));
+
+  if (!rows.length) {
     el.standardHistoryList.className = "history-list empty-state";
-    el.standardHistoryList.textContent = "Aucun résultat enregistré.";
+    el.standardHistoryList.textContent = `Aucun résultat enregistré en ${formatMonthLabel(selectedArchiveMonth)}.`;
     return;
   }
 
+  const canDelete = adminUnlocked && !isFrozenMonth(selectedArchiveMonth);
   el.standardHistoryList.className = "history-list";
-  el.standardHistoryList.innerHTML = state.standardHistory.map(item => {
+  el.standardHistoryList.innerHTML = rows.map(item => {
     const winnerTeam = formatTeam(item.teams[item.winner]);
     return `
       <article class="history-row">
@@ -483,9 +608,54 @@ function renderStandardHistory() {
           <strong>${escapeHtml(winnerTeam)} vainqueur · ${item.mode.toUpperCase()}</strong>
           <small>${escapeHtml(formatTeam(item.teams.A))} vs ${escapeHtml(formatTeam(item.teams.B))} · ${formatScore(item.score)} · ${formatDateOnly(item.playedAt)}</small>
         </div>
-        <span class="score-chip">${item.score.A} - ${item.score.B}</span>
+        <div class="history-actions">
+          <span class="score-chip">${item.score.A} - ${item.score.B}</span>
+          ${canDelete ? `<button type="button" class="delete-match-button" data-delete-standard-match="${item.id}">Supprimer</button>` : ""}
+        </div>
       </article>`;
   }).join("");
+
+  el.standardHistoryList.querySelectorAll("[data-delete-standard-match]").forEach(button => {
+    button.addEventListener("click", () => deleteStandardMatch(button.dataset.deleteStandardMatch));
+  });
+}
+
+function toggleAdminMode() {
+  if (adminUnlocked) {
+    adminUnlocked = false;
+    sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    archiveUiMessage = "Mode admin désactivé.";
+    render();
+    return;
+  }
+
+  const enteredPin = window.prompt("Code administrateur :");
+  if (enteredPin === null) return;
+  const expectedPin = String(supabaseConfig.adminPin || "7391");
+  if (String(enteredPin).trim() !== expectedPin) {
+    archiveUiMessage = "Code administrateur incorrect.";
+    renderArchiveControls();
+    return;
+  }
+
+  adminUnlocked = true;
+  sessionStorage.setItem(ADMIN_SESSION_KEY, "1");
+  archiveUiMessage = "Mode admin activé.";
+  render();
+}
+
+function deleteStandardMatch(matchId) {
+  if (!adminUnlocked) return;
+  const match = state.standardHistory.find(item => item.id === matchId);
+  if (!match || isFrozenMonth(monthKeyFromValue(match.playedAt || match.createdAt))) {
+    archiveUiMessage = "Ce mois est figé : suppression impossible.";
+    render();
+    return;
+  }
+  if (!window.confirm("Supprimer définitivement ce match de l’historique et des statistiques ?")) return;
+  state.standardHistory = state.standardHistory.filter(item => item.id !== matchId);
+  archiveUiMessage = "Match supprimé.";
+  render();
 }
 
 function setStandardMessage(message = "") {
@@ -493,7 +663,8 @@ function setStandardMessage(message = "") {
 }
 
 function chooseRandomTeams() {
-  const required = state.standardMode === "2v2" ? 4 : 2;
+  const sizes = getStandardTeamSizes();
+  const required = sizes.A + sizes.B;
   if (state.players.length < required) {
     setStandardMessage(`Ajoute au moins ${required} joueurs pour générer les équipes.`);
     return;
@@ -501,15 +672,15 @@ function chooseRandomTeams() {
 
   const shuffled = shuffle([...state.players]);
   el.teamA1.value = shuffled[0] || "";
-  el.teamB1.value = shuffled[1] || "";
-  el.teamA2.value = state.standardMode === "2v2" ? (shuffled[2] || "") : "";
-  el.teamB2.value = state.standardMode === "2v2" ? (shuffled[3] || "") : "";
+  el.teamA2.value = sizes.A === 2 ? (shuffled[1] || "") : "";
+  el.teamB1.value = shuffled[sizes.A] || "";
+  el.teamB2.value = sizes.B === 2 ? (shuffled[sizes.A + 1] || "") : "";
   setStandardMessage("");
   renderStandardPreview();
 }
 
-function createCompetitionTeams(mode) {
-  const players = shuffle([...state.players]);
+function createCompetitionTeams(mode, selectedPlayers) {
+  const players = shuffle([...(selectedPlayers || [])]);
   if (mode === "1v1") {
     return players.map((player, index) => ({
       id: safeId(`p-${player}-${index}`),
@@ -531,13 +702,14 @@ function createCompetitionTeams(mode) {
 
 function generateTournament() {
   const mode = state.tournamentConfig.mode;
+  const selectedPlayers = getSelectedCompetitionPlayers("tournament");
   const requiredPlayers = mode === "2v2" ? 4 : 2;
-  if (state.players.length < requiredPlayers) {
-    setTournamentMessage(`Ajoute au moins ${requiredPlayers} joueurs pour générer ce tournoi.`);
+  if (selectedPlayers.length < requiredPlayers) {
+    setTournamentMessage(`Sélectionne au moins ${requiredPlayers} joueurs pour générer ce tournoi.`);
     return;
   }
 
-  const teams = createCompetitionTeams(mode);
+  const teams = createCompetitionTeams(mode, selectedPlayers);
   if (teams.length < 2) {
     setTournamentMessage("Il faut au moins deux joueurs ou deux équipes.");
     return;
@@ -553,7 +725,7 @@ function generateTournament() {
   };
 
   autoAdvanceKnockout();
-  const ignored = mode === "2v2" && state.players.length % 2 !== 0 ? " Un joueur impair a été laissé de côté." : "";
+  const ignored = mode === "2v2" && selectedPlayers.length % 2 !== 0 ? " Un joueur sélectionné a été laissé de côté car le nombre est impair." : "";
   setTournamentMessage(ignored.trim());
   render();
 }
@@ -566,22 +738,28 @@ function clearCurrentTournament() {
 
 function buildKnockoutRound(teams, roundNumber, shouldShuffle = false) {
   const bracketTeams = shouldShuffle ? shuffle([...teams]) : [...teams];
-  const power = nextPowerOfTwo(bracketTeams.length);
-  while (bracketTeams.length < power) bracketTeams.push(null);
-
   const matches = [];
+
+  if (roundNumber === 1) {
+    const power = nextPowerOfTwo(bracketTeams.length);
+    const byeCount = power - bracketTeams.length;
+    for (let index = 0; index < byeCount; index += 1) {
+      const teamA = bracketTeams.shift() || null;
+      matches.push({ id: randomId(), teamA, teamB: null, winner: teamA ? "teamA" : null, bye: Boolean(teamA) });
+    }
+  }
+
   for (let index = 0; index < bracketTeams.length; index += 2) {
-    const teamA = bracketTeams[index];
-    const teamB = bracketTeams[index + 1];
-    const match = {
+    const teamA = bracketTeams[index] || null;
+    const teamB = bracketTeams[index + 1] || null;
+    const bye = Boolean(teamA && !teamB);
+    matches.push({
       id: randomId(),
       teamA,
       teamB,
-      winner: null,
-      bye: Boolean(teamA && !teamB)
-    };
-    if (match.bye) match.winner = "teamA";
-    matches.push(match);
+      winner: bye ? "teamA" : null,
+      bye
+    });
   }
 
   return {
@@ -660,10 +838,10 @@ function setTournamentWinner(roundIndex, matchIndex, winnerSide) {
 
   const match = tournament.rounds?.[roundIndex]?.matches?.[matchIndex];
   if (!match || !match[winnerSide] || match.bye) return;
+  const winnerChanged = match.winner && match.winner !== winnerSide;
   match.winner = winnerSide;
 
-  if (roundIndex < tournament.rounds.length - 1) {
-    tournament.rounds = tournament.rounds.slice(0, roundIndex + 1);
+  if (winnerChanged) {
     state.tournamentArchive = state.tournamentArchive.filter(item => {
       return item.tournamentId !== tournament.id || item.roundIndex <= roundIndex;
     });
@@ -707,15 +885,54 @@ function upsertTournamentArchive(tournament, match, roundIndex, matchIndex) {
 
 function autoAdvanceKnockout() {
   const tournament = state.tournament;
-  if (!tournament || tournament.format !== "knockout") return;
+  if (!tournament || tournament.format !== "knockout" || !Array.isArray(tournament.rounds) || !tournament.rounds.length) return;
 
-  let lastRound = tournament.rounds[tournament.rounds.length - 1];
-  while (lastRound.matches.length > 1 && lastRound.matches.every(match => match.winner)) {
-    const winners = lastRound.matches.map(match => match[match.winner]).filter(Boolean);
-    if (winners.length <= 1) break;
-    tournament.rounds.push(buildKnockoutRound(winners, tournament.rounds.length + 1, false));
-    lastRound = tournament.rounds[tournament.rounds.length - 1];
+  let firstRound = tournament.rounds[0];
+  if (firstRound.matches?.some(match => !match.teamA && !match.teamB)) {
+    const orderedTeams = firstRound.matches.flatMap(match => [match.teamA, match.teamB]).filter(Boolean);
+    firstRound = buildKnockoutRound(orderedTeams.length ? orderedTeams : tournament.teams, 1, false);
   }
+
+  const rebuiltRounds = [firstRound];
+  let previousRound = firstRound;
+  let roundNumber = 2;
+
+  while (previousRound.matches.length > 1) {
+    const oldRound = tournament.rounds[roundNumber - 1];
+    const matches = [];
+    for (let index = 0; index < previousRound.matches.length; index += 2) {
+      const sourceA = previousRound.matches[index];
+      const sourceB = previousRound.matches[index + 1];
+      const teamA = sourceA?.winner ? sourceA[sourceA.winner] : null;
+      const teamB = sourceB?.winner ? sourceB[sourceB.winner] : null;
+      const oldMatch = oldRound?.matches?.[matches.length];
+      const sameTeams = sameCompetitionTeam(oldMatch?.teamA, teamA) && sameCompetitionTeam(oldMatch?.teamB, teamB);
+      let winner = sameTeams ? oldMatch?.winner || null : null;
+      if (winner && !((winner === "teamA" && teamA) || (winner === "teamB" && teamB))) winner = null;
+
+      matches.push({
+        id: sameTeams && oldMatch?.id ? oldMatch.id : randomId(),
+        teamA,
+        teamB,
+        winner,
+        bye: false
+      });
+    }
+
+    const nextRound = { name: getRoundName(matches.length, roundNumber), matches };
+    rebuiltRounds.push(nextRound);
+    previousRound = nextRound;
+    roundNumber += 1;
+  }
+
+  tournament.rounds = rebuiltRounds;
+}
+
+function sameCompetitionTeam(left, right) {
+  if (!left && !right) return true;
+  if (!left || !right) return false;
+  if (left.id && right.id && left.id === right.id) return true;
+  return samePlayers(left.players, right.players);
 }
 
 function getTournamentChampion(tournament) {
@@ -746,13 +963,14 @@ function renderTournamentHistory() {
 
 function generateChampionship() {
   const mode = state.championshipConfig.mode;
+  const selectedPlayers = getSelectedCompetitionPlayers("championship");
   const requiredPlayers = mode === "2v2" ? 4 : 2;
-  if (state.players.length < requiredPlayers) {
-    setChampionshipMessage(`Ajoute au moins ${requiredPlayers} joueurs pour générer ce championnat.`);
+  if (selectedPlayers.length < requiredPlayers) {
+    setChampionshipMessage(`Sélectionne au moins ${requiredPlayers} joueurs pour générer ce championnat.`);
     return;
   }
 
-  const teams = createCompetitionTeams(mode);
+  const teams = createCompetitionTeams(mode, selectedPlayers);
   if (teams.length < 2) {
     setChampionshipMessage("Il faut au moins deux joueurs ou deux équipes.");
     return;
@@ -781,7 +999,7 @@ function generateChampionship() {
     createdAt: new Date().toISOString()
   };
 
-  const ignored = mode === "2v2" && state.players.length % 2 !== 0 ? " Un joueur impair a été laissé de côté." : "";
+  const ignored = mode === "2v2" && selectedPlayers.length % 2 !== 0 ? " Un joueur sélectionné a été laissé de côté car le nombre est impair." : "";
   setChampionshipMessage(ignored.trim());
   render();
 }
@@ -843,29 +1061,33 @@ function renderChampionshipStandingRows(rows) {
 function renderChampionshipMatch(match) {
   const scoreA = match.score?.A ?? "";
   const scoreB = match.score?.B ?? "";
+  const frozen = match.status === "played" && isFrozenMonth(monthKeyFromValue(match.playedAt));
   const playedClass = match.status === "played" ? "played" : "";
+  const frozenClass = frozen ? "frozen-match" : "";
   const winner = match.winner ? ` · Gagnant : ${escapeHtml(formatTeam(match.winner === "A" ? match.teamA.players : match.teamB.players))}` : "";
+  const disabled = frozen ? "disabled" : "";
+  const dateValue = match.playedAt || todayInputValue();
 
   return `
-    <article class="championship-match ${playedClass}">
+    <article class="championship-match ${playedClass} ${frozenClass}">
       <div class="match-title">
         <strong>${escapeHtml(formatTeam(match.teamA.players))} vs ${escapeHtml(formatTeam(match.teamB.players))}</strong>
-        <small>${match.status === "played" ? "Joué" : "À jouer"}${winner}</small>
+        <small>${frozen ? "Joué · mois figé" : match.status === "played" ? "Joué" : "À jouer"}${winner}</small>
       </div>
       <label>
         Date
-        <input type="date" value="${escapeHtml(match.playedAt || todayInputValue())}" data-champ-date="${match.id}" />
+        <input type="date" min="${firstDayOfCurrentMonth()}" max="${todayInputValue()}" value="${escapeHtml(dateValue)}" data-champ-date="${match.id}" ${disabled} />
       </label>
       <label>
         Score A
-        <input type="number" min="0" step="1" value="${escapeHtml(scoreA)}" inputmode="numeric" data-champ-score-a="${match.id}" />
+        <input type="number" min="0" step="1" value="${escapeHtml(scoreA)}" inputmode="numeric" data-champ-score-a="${match.id}" ${disabled} />
       </label>
       <span class="vs-text">-</span>
       <label>
         Score B
-        <input type="number" min="0" step="1" value="${escapeHtml(scoreB)}" inputmode="numeric" data-champ-score-b="${match.id}" />
+        <input type="number" min="0" step="1" value="${escapeHtml(scoreB)}" inputmode="numeric" data-champ-score-b="${match.id}" ${disabled} />
       </label>
-      <button class="save-mini-button" type="button" data-champ-save="${match.id}">Enregistrer</button>
+      <button class="save-mini-button" type="button" data-champ-save="${match.id}" ${disabled}>${frozen ? "Figé" : "Enregistrer"}</button>
     </article>`;
 }
 
@@ -881,7 +1103,20 @@ function saveChampionshipMatch(matchId) {
   const scoreBInput = el.championshipBoard.querySelector(`[data-champ-score-b="${cssEscape(matchId)}"]`);
   const scoreA = parseScore(scoreAInput?.value);
   const scoreB = parseScore(scoreBInput?.value);
+  const playedAt = dateInput?.value || todayInputValue();
 
+  if (match.status === "played" && isFrozenMonth(monthKeyFromValue(match.playedAt))) {
+    setChampionshipMessage("Ce résultat appartient à un mois figé et ne peut plus être modifié.");
+    return;
+  }
+  if (monthKeyFromValue(playedAt) !== currentMonthKey()) {
+    setChampionshipMessage("Les mois précédents sont figés. Utilise une date du mois en cours.");
+    return;
+  }
+  if (playedAt > todayInputValue()) {
+    setChampionshipMessage("La date du match ne peut pas être dans le futur.");
+    return;
+  }
   if (scoreA === scoreB) {
     setChampionshipMessage("Le score ne peut pas être égal. Il faut un gagnant.");
     return;
@@ -889,7 +1124,7 @@ function saveChampionshipMatch(matchId) {
 
   match.score = { A: scoreA, B: scoreB };
   match.winner = scoreA > scoreB ? "A" : "B";
-  match.playedAt = dateInput?.value || todayInputValue();
+  match.playedAt = playedAt;
   match.status = "played";
 
   upsertChampionshipArchive(championship, match);
@@ -996,20 +1231,60 @@ function setChampionshipMessage(message = "") {
   el.championshipMessage.textContent = message;
 }
 
+function renderStatsSeasonTabs() {
+  if (!el.statsMonthTabs) return;
+  const months = getAvailableMonthKeys(true);
+  if (!months.includes(selectedStatsMonth)) selectedStatsMonth = months[0] || currentMonthKey();
+
+  el.statsMonthTabs.innerHTML = months.map(month => `
+    <button type="button" class="month-tab ${month === selectedStatsMonth ? "active" : ""}" data-stats-month="${month}">
+      ${escapeHtml(formatMonthLabel(month))}
+    </button>`).join("");
+
+  el.statsMonthTabs.querySelectorAll("[data-stats-month]").forEach(button => {
+    button.addEventListener("click", () => {
+      selectedStatsMonth = button.dataset.statsMonth;
+      renderStatsSeasonTabs();
+      renderStats();
+    });
+  });
+
+  if (el.statsSeasonStatus) {
+    el.statsSeasonStatus.textContent = isFrozenMonth(selectedStatsMonth) ? "Saison terminée · figée" : "Saison en cours";
+    el.statsSeasonStatus.className = `season-status ${isFrozenMonth(selectedStatsMonth) ? "closed" : "current"}`;
+  }
+}
+
 function renderStats() {
-  const rows = buildPlayerStats();
+  const events = getAllMatchEvents(selectedStatsMonth);
+  const rows = buildPlayerStats(selectedStatsMonth);
   const activeRows = rows.filter(row => row.played > 0);
   const scoredRows = rows.filter(row => row.scoredMatches > 0);
+  const eligibleEloRows = rows
+    .filter(row => row.played >= MIN_ELO_MATCHES)
+    .sort((a, b) => b.elo - a.elo || b.wins - a.wins || winRate(b) - winRate(a) || a.name.localeCompare(b.name));
+  const closedSeason = isFrozenMonth(selectedStatsMonth);
 
-  renderRanking(el.eloRanking, activeRows.slice().sort((a, b) => b.elo - a.elo || b.points - a.points || a.name.localeCompare(b.name)), row => ({
-    title: row.name,
-    detail: `${row.played} match(s) · dernier mouvement ${formatSigned(row.lastEloDelta || 0)}`,
+  renderSeasonChampion(eligibleEloRows, closedSeason);
+
+  const waitingCount = activeRows.filter(row => row.played < MIN_ELO_MATCHES).length;
+  if (el.eloQualificationNote) {
+    el.eloQualificationNote.textContent = eligibleEloRows.length
+      ? `${eligibleEloRows.length} joueur(s) classé(s). ${waitingCount ? `${waitingCount} joueur(s) n’ont pas encore atteint 5 matchs.` : "Tous les joueurs actifs sont classés."}`
+      : activeRows.length
+        ? `Aucun joueur n’a encore atteint les ${MIN_ELO_MATCHES} matchs requis pour être classé.`
+        : "Aucun match enregistré pour cette saison.";
+  }
+
+  renderRanking(el.eloRanking, eligibleEloRows, (row, index) => ({
+    title: closedSeason && index === 0 ? `★ ${row.name}` : row.name,
+    detail: `${row.played} match(s) · ${row.wins} victoire(s) · dernier mouvement ${formatSignedDecimal(row.lastEloDelta || 0)}`,
     value: Math.round(row.elo)
-  }));
+  }), { highlightFirst: closedSeason });
 
   renderRanking(el.winRateRanking, activeRows.slice().sort((a, b) => winRate(b) - winRate(a) || b.played - a.played || b.points - a.points || a.name.localeCompare(b.name)), row => ({
     title: row.name,
-    detail: `${row.wins}/${row.played} victoire(s)` ,
+    detail: `${row.wins}/${row.played} victoire(s)`,
     value: `${Math.round(winRate(row))}%`
   }));
 
@@ -1025,22 +1300,39 @@ function renderStats() {
     value: `${formatDecimal(avgGoalsAgainst(row))}/m`
   }));
 
-  renderExtraStats(rows);
+  renderExtraStats(rows, events, eligibleEloRows);
 }
 
-function renderRanking(container, rows, mapRow) {
+function renderSeasonChampion(eligibleRows, closedSeason) {
+  if (!el.seasonChampion) return;
+  const leader = eligibleRows[0];
+  if (!leader) {
+    el.seasonChampion.className = "season-champion empty-state";
+    el.seasonChampion.textContent = `Aucun champion pour ${formatMonthLabel(selectedStatsMonth)} : aucun joueur n’a atteint ${MIN_ELO_MATCHES} matchs.`;
+    return;
+  }
+
+  el.seasonChampion.className = `season-champion ${closedSeason ? "champion-awarded" : "leader-provisional"}`;
+  el.seasonChampion.innerHTML = closedSeason
+    ? `<span class="champion-star">★</span><div><small>Champion de ${escapeHtml(formatMonthLabel(selectedStatsMonth))}</small><strong>${escapeHtml(leader.name)}</strong><small>${Math.round(leader.elo)} Elo · ${leader.wins} victoire(s) en ${leader.played} match(s)</small></div>`
+    : `<span class="champion-star provisional">☆</span><div><small>Leader provisoire de ${escapeHtml(formatMonthLabel(selectedStatsMonth))}</small><strong>${escapeHtml(leader.name)}</strong><small>${Math.round(leader.elo)} Elo · l’étoile sera attribuée à la fin du mois</small></div>`;
+}
+
+function renderRanking(container, rows, mapRow, options = {}) {
   if (!container) return;
   if (!rows.length) {
     container.className = "leaderboard empty-state";
-    container.textContent = container.id.includes("goals") ? "Aucun score enregistré." : "Aucun match enregistré.";
+    container.textContent = container.id === "eloRanking"
+      ? `Aucun joueur classé : ${MIN_ELO_MATCHES} matchs sont nécessaires.`
+      : container.id.includes("goals") ? "Aucun score enregistré." : "Aucun match enregistré.";
     return;
   }
 
   container.className = "leaderboard";
   container.innerHTML = rows.map((row, index) => {
-    const mapped = mapRow(row);
+    const mapped = mapRow(row, index);
     return `
-      <article class="leader-row">
+      <article class="leader-row ${options.highlightFirst && index === 0 ? "monthly-champion" : ""}">
         <span class="rank">${index + 1}</span>
         <div>
           <strong>${escapeHtml(mapped.title)}</strong>
@@ -1051,14 +1343,13 @@ function renderRanking(container, rows, mapRow) {
   }).join("");
 }
 
-function renderExtraStats(rows) {
+function renderExtraStats(rows, events, eligibleEloRows) {
   const activeRows = rows.filter(row => row.played > 0);
   const scoredRows = rows.filter(row => row.scoredMatches > 0);
-  const events = getAllMatchEvents();
 
   if (!activeRows.length) {
     el.extraStats.className = "summary-grid empty-state";
-    el.extraStats.textContent = "Aucune statistique disponible.";
+    el.extraStats.textContent = "Aucune statistique disponible pour cette saison.";
     return;
   }
 
@@ -1066,7 +1357,7 @@ function renderExtraStats(rows) {
   const bestDiff = scoredRows.slice().sort((a, b) => b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor || a.name.localeCompare(b.name))[0];
   const bestAttack = scoredRows.slice().sort((a, b) => b.goalsFor - a.goalsFor || a.name.localeCompare(b.name))[0];
   const bestDefense = scoredRows.slice().sort((a, b) => avgGoalsAgainst(a) - avgGoalsAgainst(b) || a.name.localeCompare(b.name))[0];
-  const leaderElo = activeRows.slice().sort((a, b) => b.elo - a.elo || a.name.localeCompare(b.name))[0];
+  const leaderElo = eligibleEloRows[0];
   const totalGoals = events.reduce((sum, event) => event.score ? sum + event.score.A + event.score.B : sum, 0);
 
   const cards = [
@@ -1074,8 +1365,8 @@ function renderExtraStats(rows) {
     { label: "Meilleure différence", value: bestDiff?.name || "-", detail: bestDiff ? `Diff ${formatSigned(bestDiff.goalDiff)}` : "Aucun score" },
     { label: "Meilleure attaque totale", value: bestAttack?.name || "-", detail: bestAttack ? `${bestAttack.goalsFor} but(s)` : "Aucun score" },
     { label: "Meilleure défense", value: bestDefense?.name || "-", detail: bestDefense ? `${formatDecimal(avgGoalsAgainst(bestDefense))} but pris/match` : "Aucun score" },
-    { label: "Leader Elo", value: leaderElo?.name || "-", detail: leaderElo ? `${Math.round(leaderElo.elo)} Elo` : "Aucun match" },
-    { label: "Volume", value: `${events.length} match(s)`, detail: `${totalGoals} but(s) enregistré(s)` }
+    { label: "Leader Elo qualifié", value: leaderElo?.name || "-", detail: leaderElo ? `${Math.round(leaderElo.elo)} Elo` : `Minimum ${MIN_ELO_MATCHES} matchs` },
+    { label: "Volume mensuel", value: `${events.length} match(s)`, detail: `${totalGoals} but(s) enregistré(s)` }
   ];
 
   el.extraStats.className = "summary-grid";
@@ -1089,7 +1380,7 @@ function renderExtraStats(rows) {
     </article>`).join("");
 }
 
-function buildPlayerStats() {
+function buildPlayerStats(monthKey = selectedStatsMonth) {
   const stats = new Map();
   const ensure = name => {
     const clean = normalizeName(name);
@@ -1113,7 +1404,7 @@ function buildPlayerStats() {
   };
 
   state.players.forEach(ensure);
-  const events = getAllMatchEvents().sort((a, b) => eventTimestamp(a) - eventTimestamp(b));
+  const events = getAllMatchEvents(monthKey).sort((a, b) => eventTimestamp(a) - eventTimestamp(b));
 
   events.forEach(event => {
     const teamA = event.teams.A;
@@ -1121,12 +1412,9 @@ function buildPlayerStats() {
     [...teamA, ...teamB].forEach(ensure);
 
     const winnerSide = event.winner;
-    const loserSide = winnerSide === "A" ? "B" : "A";
-
     teamA.forEach(player => applyTeamResult(ensure(player), event, "A", winnerSide));
     teamB.forEach(player => applyTeamResult(ensure(player), event, "B", winnerSide));
-
-    applyElo(stats, event, winnerSide, loserSide);
+    applyElo(stats, event, winnerSide);
   });
 
   return Array.from(stats.values()).map(row => ({
@@ -1154,30 +1442,29 @@ function applyTeamResult(row, event, side, winnerSide) {
 }
 
 function applyElo(stats, event, winnerSide) {
-  const teamA = event.teams.A.map(player => stats.get(player)).filter(Boolean);
-  const teamB = event.teams.B.map(player => stats.get(player)).filter(Boolean);
+  const teamA = event.teams.A.map(player => stats.get(normalizeName(player))).filter(Boolean);
+  const teamB = event.teams.B.map(player => stats.get(normalizeName(player))).filter(Boolean);
   if (!teamA.length || !teamB.length) return;
 
   const ratingA = average(teamA.map(row => row.elo));
   const ratingB = average(teamB.map(row => row.elo));
   const expectedA = 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
-  const scoreA = winnerSide === "A" ? 1 : 0;
-  const margin = event.score ? Math.max(1, Math.abs(parseScore(event.score.A) - parseScore(event.score.B))) : 1;
-  const marginFactor = event.score ? Math.min(1.35, 1 + (margin - 1) * 0.035) : 1;
-  const deltaA = Math.round(ELO_K_FACTOR * marginFactor * (scoreA - expectedA));
-  const deltaB = -deltaA;
+  const resultA = winnerSide === "A" ? 1 : 0;
+  const teamDeltaA = ELO_K_FACTOR * (resultA - expectedA);
+  const playerDeltaA = teamDeltaA / teamA.length;
+  const playerDeltaB = -teamDeltaA / teamB.length;
 
   teamA.forEach(row => {
-    row.elo += deltaA;
-    row.lastEloDelta = deltaA;
+    row.elo += playerDeltaA;
+    row.lastEloDelta = playerDeltaA;
   });
   teamB.forEach(row => {
-    row.elo += deltaB;
-    row.lastEloDelta = deltaB;
+    row.elo += playerDeltaB;
+    row.lastEloDelta = playerDeltaB;
   });
 }
 
-function getAllMatchEvents() {
+function getAllMatchEvents(monthKey = null) {
   const events = [];
 
   state.standardHistory.forEach(match => {
@@ -1222,7 +1509,9 @@ function getAllMatchEvents() {
     });
   });
 
-  return events.filter(event => event.winner === "A" || event.winner === "B");
+  return events
+    .filter(event => event.winner === "A" || event.winner === "B")
+    .filter(event => !monthKey || monthKeyFromValue(event.playedAt || event.createdAt) === monthKey);
 }
 
 function sortPointRows(a, b) {
@@ -1301,6 +1590,12 @@ function formatSigned(value) {
   return number > 0 ? `+${number}` : String(number);
 }
 
+function formatSignedDecimal(value) {
+  const number = Number(value) || 0;
+  const formatted = new Intl.NumberFormat("fr-CH", { maximumFractionDigits: 1 }).format(number);
+  return number > 0 ? `+${formatted}` : formatted;
+}
+
 function formatDecimal(value) {
   return new Intl.NumberFormat("fr-CH", { maximumFractionDigits: 2 }).format(value || 0);
 }
@@ -1309,6 +1604,59 @@ function todayInputValue() {
   const date = new Date();
   const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return offsetDate.toISOString().slice(0, 10);
+}
+
+
+function currentMonthKey() {
+  return todayInputValue().slice(0, 7);
+}
+
+function firstDayOfCurrentMonth() {
+  return `${currentMonthKey()}-01`;
+}
+
+function monthKeyFromValue(value) {
+  const normalized = dateOnly(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized.slice(0, 7) : "";
+}
+
+function isFrozenMonth(monthKey) {
+  return Boolean(monthKey && monthKey < currentMonthKey());
+}
+
+function getStandardArchiveMonthKeys() {
+  const months = new Set([currentMonthKey()]);
+  state.standardHistory.forEach(match => {
+    const month = monthKeyFromValue(match.playedAt || match.createdAt);
+    if (month) months.add(month);
+  });
+  return Array.from(months).sort((a, b) => b.localeCompare(a));
+}
+
+function getAvailableMonthKeys(includeCurrent = true) {
+  const months = new Set();
+  if (includeCurrent) months.add(currentMonthKey());
+  getAllMatchEvents().forEach(event => {
+    const month = monthKeyFromValue(event.playedAt || event.createdAt);
+    if (month) months.add(month);
+  });
+  return Array.from(months).sort((a, b) => b.localeCompare(a));
+}
+
+function formatMonthLabel(monthKey) {
+  if (!/^\d{4}-\d{2}$/.test(String(monthKey || ""))) return "Mois inconnu";
+  const [year, month] = monthKey.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("fr-CH", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function configureCurrentMonthDateInput() {
+  if (!el.standardMatchDate) return;
+  el.standardMatchDate.min = firstDayOfCurrentMonth();
+  el.standardMatchDate.max = todayInputValue();
+  if (monthKeyFromValue(el.standardMatchDate.value) !== currentMonthKey() || el.standardMatchDate.value > todayInputValue()) {
+    el.standardMatchDate.value = todayInputValue();
+  }
 }
 
 function dateOnly(value) {
@@ -1383,6 +1731,8 @@ el.addPlayerForm.addEventListener("submit", event => {
   }
 
   state.players.push(name);
+  state.competitionSelection.tournament.push(name);
+  state.competitionSelection.championship.push(name);
   el.playerName.value = "";
   render();
 });
@@ -1414,6 +1764,22 @@ document.querySelectorAll("[data-championship-mode]").forEach(button => {
   button.addEventListener("click", () => {
     state.championshipConfig.mode = button.dataset.championshipMode;
     render();
+  });
+});
+
+
+el.archiveMonthFilter?.addEventListener("change", () => {
+  selectedArchiveMonth = el.archiveMonthFilter.value || currentMonthKey();
+  archiveUiMessage = "";
+  renderArchiveControls();
+  renderStandardHistory();
+});
+
+el.adminModeBtn?.addEventListener("click", toggleAdminMode);
+
+document.querySelectorAll("[data-selection-action]").forEach(button => {
+  button.addEventListener("click", () => {
+    setCompetitionSelection(button.dataset.selectionType, button.dataset.selectionAction === "all");
   });
 });
 
