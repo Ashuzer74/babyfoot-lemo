@@ -9,7 +9,6 @@ const MIN_ELO_MATCHES = 5;
 const ADMIN_SESSION_KEY = "lemo_babyfoot_admin_unlocked";
 
 const supabaseConfig = window.BABYFOOT_CONFIG || {};
-let supabaseClient = null;
 let supabaseReady = false;
 let appStarted = false;
 let saveTimer = null;
@@ -233,23 +232,108 @@ function setupSupabase() {
     return;
   }
 
-  if (!window.supabase || !window.supabase.createClient) {
-    setSyncStatus("Erreur : librairie Supabase non chargée.", "error");
+  if (typeof window.fetch !== "function") {
+    setSyncStatus("Erreur : ce navigateur ne prend pas en charge la connexion Supabase.", "error");
     return;
   }
 
-  const cleanUrl = String(supabaseConfig.url)
+  supabaseReady = true;
+}
+
+function getSupabaseBaseUrl() {
+  return String(supabaseConfig.url || "")
     .trim()
     .replace(/\/rest\/v1\/?$/, "")
     .replace(/\/$/, "");
-
-  supabaseClient = window.supabase.createClient(cleanUrl, String(supabaseConfig.anonKey).trim());
-  supabaseReady = true;
 }
 
 function getSupabaseErrorMessage(error) {
   if (!error) return "Erreur inconnue.";
+  if (error.name === "AbortError") {
+    return "Le serveur Supabase ne répond pas dans le délai prévu.";
+  }
+  if (error instanceof TypeError && /failed to fetch|networkerror|load failed/i.test(error.message || "")) {
+    return "Serveur Supabase inaccessible. Vérifie que le projet est actif et que le réseau autorise supabase.co.";
+  }
   return error.message || error.details || error.hint || JSON.stringify(error);
+}
+
+function wait(delayMs) {
+  return new Promise(resolve => window.setTimeout(resolve, delayMs));
+}
+
+async function supabaseRequest(path, options = {}, maxAttempts = 3) {
+  const baseUrl = getSupabaseBaseUrl();
+  const key = String(supabaseConfig.anonKey || "").trim();
+  const url = `${baseUrl}${path}`;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const response = await window.fetch(url, {
+        method: options.method || "GET",
+        mode: "cors",
+        credentials: "omit",
+        cache: "no-store",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Accept: "application/json",
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+          ...(options.headers || {})
+        },
+        body: options.body
+      });
+
+      window.clearTimeout(timeoutId);
+
+      const responseText = await response.text();
+      let payload = null;
+      if (responseText) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch {
+          payload = responseText;
+        }
+      }
+
+      if (!response.ok) {
+        const details = payload?.message || payload?.details || payload?.hint || response.statusText || "Erreur Supabase";
+        const requestError = new Error(`HTTP ${response.status} : ${details}`);
+        requestError.status = response.status;
+        throw requestError;
+      }
+
+      return payload;
+    } catch (error) {
+      window.clearTimeout(timeoutId);
+      lastError = error;
+      const retryableStatus = Number(error?.status || 0);
+      const retryable =
+        error?.name === "AbortError" ||
+        error instanceof TypeError ||
+        retryableStatus === 408 ||
+        retryableStatus === 425 ||
+        retryableStatus === 429 ||
+        retryableStatus >= 500;
+
+      if (!retryable || attempt === maxAttempts) break;
+      await wait(attempt * 800);
+    }
+  }
+
+  throw lastError || new Error("Connexion Supabase impossible.");
+}
+
+async function readRemoteState() {
+  const query = `/rest/v1/${encodeURIComponent(SUPABASE_TABLE)}?select=data,updated_at&id=eq.${encodeURIComponent(SUPABASE_ROW_ID)}&limit=1`;
+  const rows = await supabaseRequest(query);
+  return Array.isArray(rows) ? (rows[0] || null) : null;
 }
 
 async function loadState() {
@@ -259,29 +343,26 @@ async function loadState() {
 
   setSyncStatus("Connexion à la sauvegarde partagée...", "info");
 
-  const { data, error } = await supabaseClient
-    .from(SUPABASE_TABLE)
-    .select("data, updated_at")
-    .eq("id", SUPABASE_ROW_ID)
-    .maybeSingle();
+  try {
+    const data = await readRemoteState();
 
-  if (error) {
+    if (!data) {
+      const initialState = normalizeState(cloneDefaultState());
+      state = initialState;
+      const saved = await saveStateNow(initialState);
+      if (saved) setSyncStatus("Sauvegarde partagée initialisée.", "success");
+      return initialState;
+    }
+
+    lastRemoteUpdatedAt = data.updated_at;
+    setSyncStatus("Synchronisé avec la sauvegarde partagée.", "success");
+    return normalizeState(data.data);
+  } catch (error) {
     console.error("Erreur Supabase au chargement", error);
-    setSyncStatus(`Erreur Supabase : ${getSupabaseErrorMessage(error)}`, "error");
-    return loadLocalBackup();
+    const localState = loadLocalBackup();
+    setSyncStatus(`Erreur Supabase : ${getSupabaseErrorMessage(error)} Données locales affichées.`, "error");
+    return localState;
   }
-
-  if (!data) {
-    const initialState = normalizeState(cloneDefaultState());
-    state = initialState;
-    const saved = await saveStateNow(initialState);
-    if (saved) setSyncStatus("Sauvegarde partagée initialisée.", "success");
-    return initialState;
-  }
-
-  lastRemoteUpdatedAt = data.updated_at;
-  setSyncStatus("Synchronisé avec la sauvegarde partagée.", "success");
-  return normalizeState(data.data);
 }
 
 function saveState() {
@@ -300,48 +381,48 @@ async function saveStateNow(stateToSave = state) {
   isSaving = true;
   setSyncStatus("Sauvegarde en ligne...", "info");
 
-  const { data, error } = await supabaseClient
-    .from(SUPABASE_TABLE)
-    .upsert({
-      id: SUPABASE_ROW_ID,
-      data: stateToSave,
-      updated_at: new Date().toISOString()
-    }, { onConflict: "id" })
-    .select("updated_at")
-    .single();
+  try {
+    const query = `/rest/v1/${encodeURIComponent(SUPABASE_TABLE)}?on_conflict=id&select=updated_at`;
+    const rows = await supabaseRequest(query, {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=representation"
+      },
+      body: JSON.stringify({
+        id: SUPABASE_ROW_ID,
+        data: stateToSave,
+        updated_at: new Date().toISOString()
+      })
+    });
 
-  isSaving = false;
-
-  if (error) {
+    const data = Array.isArray(rows) ? rows[0] : null;
+    lastRemoteUpdatedAt = data?.updated_at || new Date().toISOString();
+    setSyncStatus("Sauvegardé en ligne.", "success");
+    return true;
+  } catch (error) {
     console.error("Erreur Supabase à la sauvegarde", error);
-    setSyncStatus(`Erreur de sauvegarde Supabase : ${getSupabaseErrorMessage(error)}`, "error");
+    setSyncStatus(`Erreur de sauvegarde Supabase : ${getSupabaseErrorMessage(error)} Sauvegarde locale conservée.`, "error");
     return false;
+  } finally {
+    isSaving = false;
   }
-
-  lastRemoteUpdatedAt = data.updated_at;
-  setSyncStatus("Sauvegardé en ligne.", "success");
-  return true;
 }
 
 async function refreshFromRemote() {
   if (!supabaseReady || isSaving || isUserEditing()) return;
 
-  const { data, error } = await supabaseClient
-    .from(SUPABASE_TABLE)
-    .select("data, updated_at")
-    .eq("id", SUPABASE_ROW_ID)
-    .maybeSingle();
+  try {
+    const data = await readRemoteState();
+    if (!data || !data.updated_at || data.updated_at === lastRemoteUpdatedAt) return;
 
-  if (error) {
+    state = normalizeState(data.data);
+    saveLocalBackup();
+    lastRemoteUpdatedAt = data.updated_at;
+    render({ skipSave: true });
+    setSyncStatus("Données mises à jour depuis la sauvegarde partagée.", "success");
+  } catch (error) {
     console.warn("Erreur Supabase pendant le rafraîchissement", error);
-    return;
   }
-  if (!data || !data.updated_at || data.updated_at === lastRemoteUpdatedAt) return;
-
-  state = normalizeState(data.data);
-  lastRemoteUpdatedAt = data.updated_at;
-  render({ skipSave: true });
-  setSyncStatus("Données mises à jour depuis la sauvegarde partagée.", "success");
 }
 
 function isUserEditing() {
