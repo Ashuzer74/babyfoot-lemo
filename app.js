@@ -70,6 +70,8 @@ const el = {
   archiveMonthFilter: document.getElementById("archiveMonthFilter"),
   adminModeBtn: document.getElementById("adminModeBtn"),
   archiveFreezeNote: document.getElementById("archiveFreezeNote"),
+  competitionAdminModeBtn: document.getElementById("competitionAdminModeBtn"),
+  competitionArchiveNote: document.getElementById("competitionArchiveNote"),
 
   generateTournamentBtn: document.getElementById("generateTournamentBtn"),
   clearTournamentBtn: document.getElementById("clearTournamentBtn"),
@@ -661,22 +663,31 @@ function saveStandardMatch() {
 }
 
 function renderArchiveControls() {
-  if (!el.archiveMonthFilter) return;
-  const months = getStandardArchiveMonthKeys();
-  if (!months.includes(selectedArchiveMonth)) selectedArchiveMonth = months[0] || currentMonthKey();
-  el.archiveMonthFilter.innerHTML = months
-    .map(month => `<option value="${month}">${escapeHtml(formatMonthLabel(month))}</option>`)
-    .join("");
-  el.archiveMonthFilter.value = selectedArchiveMonth;
-  el.adminModeBtn.textContent = adminUnlocked ? "Quitter le mode admin" : "Activer le mode admin";
+  if (el.archiveMonthFilter) {
+    const months = getStandardArchiveMonthKeys();
+    if (!months.includes(selectedArchiveMonth)) selectedArchiveMonth = months[0] || currentMonthKey();
+    el.archiveMonthFilter.innerHTML = months
+      .map(month => `<option value="${month}">${escapeHtml(formatMonthLabel(month))}</option>`)
+      .join("");
+    el.archiveMonthFilter.value = selectedArchiveMonth;
+  }
+
+  const adminLabel = adminUnlocked ? "Quitter le mode admin" : "Activer le mode admin";
+  if (el.adminModeBtn) el.adminModeBtn.textContent = adminLabel;
+  if (el.competitionAdminModeBtn) el.competitionAdminModeBtn.textContent = adminLabel;
 
   const frozen = isFrozenMonth(selectedArchiveMonth);
-  const baseMessage = frozen
+  const standardMessage = frozen
     ? "Mois figé : les résultats sont consultables mais ne peuvent plus être modifiés ou supprimés."
     : adminUnlocked
       ? "Mode admin actif : les matchs du mois en cours peuvent être supprimés."
       : "Mois en cours : active le mode admin pour supprimer un résultat erroné.";
-  el.archiveFreezeNote.textContent = archiveUiMessage || baseMessage;
+  const competitionMessage = adminUnlocked
+    ? "Mode admin actif : tu peux supprimer les résultats de tournoi et de championnat du mois en cours. Les saisons précédentes restent figées."
+    : "Active le mode admin pour supprimer un résultat de tournoi ou de championnat du mois en cours.";
+
+  if (el.archiveFreezeNote) el.archiveFreezeNote.textContent = archiveUiMessage || standardMessage;
+  if (el.competitionArchiveNote) el.competitionArchiveNote.textContent = archiveUiMessage || competitionMessage;
   archiveUiMessage = "";
 }
 
@@ -897,6 +908,9 @@ function renderTournament() {
       setTournamentWinner(Number(roundIndex), Number(matchIndex), side);
     });
   });
+  el.tournamentBoard.querySelectorAll("[data-delete-tournament-result]").forEach(button => {
+    button.addEventListener("click", () => deleteTournamentMatch(button.dataset.deleteTournamentResult));
+  });
 }
 
 function renderTournamentMatch(match, roundIndex, matchIndex) {
@@ -905,6 +919,8 @@ function renderTournamentMatch(match, roundIndex, matchIndex) {
   const winnerTeam = match.winner && match[match.winner] ? formatTeam(match[match.winner].players) : "";
   const aSelected = match.winner === "teamA" ? "selected-winner" : "";
   const bSelected = match.winner === "teamB" ? "selected-winner" : "";
+  const archiveItem = state.tournamentArchive.find(item => item.tournamentId === state.tournament?.id && item.matchId === match.id);
+  const canDelete = Boolean(archiveItem && adminUnlocked && !isFrozenMonth(monthKeyFromValue(archiveItem.updatedAt || archiveItem.createdAt)));
 
   return `
     <article class="tournament-match ${match.winner ? "match-winner" : ""} ${match.bye ? "bye-row" : ""}">
@@ -921,6 +937,7 @@ function renderTournamentMatch(match, roundIndex, matchIndex) {
       <div class="tournament-actions">
         <button type="button" data-tournament-winner="${roundIndex}:${matchIndex}:teamA" ${match.teamA && !match.bye ? "" : "disabled"}>A gagne</button>
         <button type="button" data-tournament-winner="${roundIndex}:${matchIndex}:teamB" ${match.teamB && !match.bye ? "" : "disabled"}>B gagne</button>
+        ${canDelete ? `<button type="button" class="delete-match-button competition-delete-button" data-delete-tournament-result="${archiveItem.id}">Supprimer le résultat</button>` : ""}
       </div>
     </article>`;
 }
@@ -1037,21 +1054,63 @@ function getTournamentChampion(tournament) {
 }
 
 function renderTournamentHistory() {
-  if (!state.tournamentArchive.length) {
+  const rows = state.tournamentArchive.slice().sort((a, b) => eventTimestamp({ createdAt: b.updatedAt || b.createdAt }) - eventTimestamp({ createdAt: a.updatedAt || a.createdAt }));
+  if (!rows.length) {
     el.tournamentHistoryList.className = "history-list empty-state";
     el.tournamentHistoryList.textContent = "Aucun résultat de tournoi enregistré.";
     return;
   }
 
   el.tournamentHistoryList.className = "history-list";
-  el.tournamentHistoryList.innerHTML = state.tournamentArchive.map(item => `
-    <article class="history-row">
-      <div>
-        <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · ${escapeHtml(item.roundName || "Tournoi")} · ${item.mode.toUpperCase()}</strong>
-        <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatDateTime(item.updatedAt || item.createdAt)}</small>
-      </div>
-      <span class="score-chip">Victoire</span>
-    </article>`).join("");
+  el.tournamentHistoryList.innerHTML = rows.map(item => {
+    const canDelete = adminUnlocked && !isFrozenMonth(monthKeyFromValue(item.updatedAt || item.createdAt));
+    return `
+      <article class="history-row">
+        <div>
+          <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · ${escapeHtml(item.roundName || "Tournoi")} · ${item.mode.toUpperCase()}</strong>
+          <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatDateTime(item.updatedAt || item.createdAt)}</small>
+        </div>
+        <div class="history-actions">
+          <span class="score-chip">Victoire</span>
+          ${canDelete ? `<button type="button" class="delete-match-button" data-delete-tournament-result="${item.id}">Supprimer</button>` : ""}
+        </div>
+      </article>`;
+  }).join("");
+
+  el.tournamentHistoryList.querySelectorAll("[data-delete-tournament-result]").forEach(button => {
+    button.addEventListener("click", () => deleteTournamentMatch(button.dataset.deleteTournamentResult));
+  });
+}
+
+function deleteTournamentMatch(archiveId) {
+  if (!adminUnlocked) return;
+  const item = state.tournamentArchive.find(row => row.id === archiveId);
+  if (!item || isFrozenMonth(monthKeyFromValue(item.updatedAt || item.createdAt))) {
+    archiveUiMessage = "Ce résultat appartient à une saison figée : suppression impossible.";
+    render();
+    return;
+  }
+  if (!window.confirm("Supprimer ce résultat de tournoi ? Les tours suivants dépendants seront également réinitialisés.")) return;
+
+  state.tournamentArchive = state.tournamentArchive.filter(row => {
+    if (row.id === archiveId) return false;
+    return row.tournamentId !== item.tournamentId || Number(row.roundIndex) <= Number(item.roundIndex);
+  });
+
+  if (state.tournament?.id === item.tournamentId) {
+    const sourceMatch = state.tournament.rounds?.[item.roundIndex]?.matches?.[item.matchIndex];
+    if (sourceMatch && sourceMatch.id === item.matchId && !sourceMatch.bye) sourceMatch.winner = null;
+    for (let roundIndex = Number(item.roundIndex) + 1; roundIndex < state.tournament.rounds.length; roundIndex += 1) {
+      state.tournament.rounds[roundIndex].matches.forEach(match => {
+        if (!match.bye) match.winner = null;
+      });
+    }
+    autoAdvanceKnockout();
+  }
+
+  archiveUiMessage = "Résultat de tournoi supprimé.";
+  setTournamentMessage("Résultat supprimé. Les matchs suivants concernés ont été remis à définir.");
+  render();
 }
 
 function generateChampionship() {
@@ -1136,6 +1195,9 @@ function renderChampionship() {
   el.championshipBoard.querySelectorAll("[data-champ-save]").forEach(button => {
     button.addEventListener("click", () => saveChampionshipMatch(button.dataset.champSave));
   });
+  el.championshipBoard.querySelectorAll("[data-delete-championship-result]").forEach(button => {
+    button.addEventListener("click", () => deleteChampionshipMatch(button.dataset.deleteChampionshipResult));
+  });
 }
 
 function renderChampionshipStandingRows(rows) {
@@ -1160,6 +1222,8 @@ function renderChampionshipMatch(match) {
   const winner = match.winner ? ` · Gagnant : ${escapeHtml(formatTeam(match.winner === "A" ? match.teamA.players : match.teamB.players))}` : "";
   const disabled = frozen ? "disabled" : "";
   const dateValue = match.playedAt || todayInputValue();
+  const archiveItem = state.championshipArchive.find(item => item.championshipId === state.championship?.id && item.matchId === match.id);
+  const canDelete = Boolean(archiveItem && adminUnlocked && !frozen);
 
   return `
     <article class="championship-match ${playedClass} ${frozenClass}">
@@ -1180,7 +1244,10 @@ function renderChampionshipMatch(match) {
         Score B
         <input type="number" min="0" step="1" value="${escapeHtml(scoreB)}" inputmode="numeric" data-champ-score-b="${match.id}" ${disabled} />
       </label>
-      <button class="save-mini-button" type="button" data-champ-save="${match.id}" ${disabled}>${frozen ? "Figé" : "Enregistrer"}</button>
+      <div class="competition-match-actions">
+        <button class="save-mini-button" type="button" data-champ-save="${match.id}" ${disabled}>${frozen ? "Figé" : "Enregistrer"}</button>
+        ${canDelete ? `<button class="delete-match-button" type="button" data-delete-championship-result="${archiveItem.id}">Supprimer</button>` : ""}
+      </div>
     </article>`;
 }
 
@@ -1299,21 +1366,58 @@ function buildChampionshipStandings(championship) {
 }
 
 function renderChampionshipHistory() {
-  if (!state.championshipArchive.length) {
+  const rows = state.championshipArchive.slice().sort((a, b) => eventTimestamp(b) - eventTimestamp(a));
+  if (!rows.length) {
     el.championshipHistoryList.className = "history-list empty-state";
     el.championshipHistoryList.textContent = "Aucun résultat de championnat enregistré.";
     return;
   }
 
   el.championshipHistoryList.className = "history-list";
-  el.championshipHistoryList.innerHTML = state.championshipArchive.map(item => `
-    <article class="history-row">
-      <div>
-        <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · Championnat · ${item.mode.toUpperCase()}</strong>
-        <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatScore(item.score)} · ${formatDateOnly(item.playedAt)}</small>
-      </div>
-      <span class="score-chip">${item.score.A} - ${item.score.B}</span>
-    </article>`).join("");
+  el.championshipHistoryList.innerHTML = rows.map(item => {
+    const canDelete = adminUnlocked && !isFrozenMonth(monthKeyFromValue(item.playedAt || item.createdAt));
+    return `
+      <article class="history-row">
+        <div>
+          <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · Championnat · ${item.mode.toUpperCase()}</strong>
+          <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatScore(item.score)} · ${formatDateOnly(item.playedAt)}</small>
+        </div>
+        <div class="history-actions">
+          <span class="score-chip">${item.score.A} - ${item.score.B}</span>
+          ${canDelete ? `<button type="button" class="delete-match-button" data-delete-championship-result="${item.id}">Supprimer</button>` : ""}
+        </div>
+      </article>`;
+  }).join("");
+
+  el.championshipHistoryList.querySelectorAll("[data-delete-championship-result]").forEach(button => {
+    button.addEventListener("click", () => deleteChampionshipMatch(button.dataset.deleteChampionshipResult));
+  });
+}
+
+function deleteChampionshipMatch(archiveId) {
+  if (!adminUnlocked) return;
+  const item = state.championshipArchive.find(row => row.id === archiveId);
+  if (!item || isFrozenMonth(monthKeyFromValue(item.playedAt || item.createdAt))) {
+    archiveUiMessage = "Ce résultat appartient à une saison figée : suppression impossible.";
+    render();
+    return;
+  }
+  if (!window.confirm("Supprimer ce résultat de championnat de l’historique et des statistiques ?")) return;
+
+  state.championshipArchive = state.championshipArchive.filter(row => row.id !== archiveId);
+  if (state.championship?.id === item.championshipId) {
+    const match = state.championship.matches.find(row => row.id === item.matchId);
+    if (match) {
+      match.score = null;
+      match.winner = null;
+      match.playedAt = null;
+      match.status = "pending";
+    }
+  }
+
+  archiveUiMessage = "Résultat de championnat supprimé.";
+  setChampionshipMessage("Résultat supprimé. Le match peut être rejoué et enregistré à nouveau.");
+  render();
 }
 
 function setTournamentMessage(message = "") {
@@ -1353,12 +1457,12 @@ function renderStats() {
   const rows = buildPlayerStats(selectedStatsMonth);
   const activeRows = rows.filter(row => row.played > 0);
   const scoredRows = rows.filter(row => row.scoredMatches > 0);
-  const eligibleEloRows = rows
-    .filter(row => row.played >= MIN_ELO_MATCHES)
-    .sort((a, b) => b.elo - a.elo || b.wins - a.wins || winRate(b) - winRate(a) || a.name.localeCompare(b.name));
+  const eligibleEloRows = getEligibleEloRows(selectedStatsMonth);
   const closedSeason = isFrozenMonth(selectedStatsMonth);
+  const cumulativeAwards = buildCumulativeSeasonAwards();
+  const seasonPlaces = new Map(eligibleEloRows.slice(0, 3).map((row, index) => [normalizeName(row.name), index + 1]));
 
-  renderSeasonChampion(eligibleEloRows, closedSeason);
+  renderSeasonPodium(eligibleEloRows, closedSeason, cumulativeAwards);
 
   const waitingCount = activeRows.filter(row => row.played < MIN_ELO_MATCHES).length;
   if (el.eloQualificationNote) {
@@ -1369,26 +1473,26 @@ function renderStats() {
         : "Aucun match enregistré pour cette saison.";
   }
 
-  renderRanking(el.eloRanking, eligibleEloRows, (row, index) => ({
-    title: closedSeason && index === 0 ? `★ ${row.name}` : row.name,
+  renderRanking(el.eloRanking, eligibleEloRows, row => ({
+    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards, seasonPlaces.get(normalizeName(row.name)), !closedSeason),
     detail: `${row.played} match(s) · ${row.wins} victoire(s) · dernier mouvement ${formatSignedDecimal(row.lastEloDelta || 0)}`,
     value: Math.round(row.elo)
-  }), { highlightFirst: closedSeason });
+  }), { podium: true });
 
   renderRanking(el.winRateRanking, activeRows.slice().sort((a, b) => winRate(b) - winRate(a) || b.played - a.played || b.points - a.points || a.name.localeCompare(b.name)), row => ({
-    title: row.name,
+    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
     detail: `${row.wins}/${row.played} victoire(s)`,
     value: `${Math.round(winRate(row))}%`
   }));
 
   renderRanking(el.goalsForRanking, scoredRows.slice().sort((a, b) => avgGoalsFor(b) - avgGoalsFor(a) || b.goalsFor - a.goalsFor || a.name.localeCompare(b.name)), row => ({
-    title: row.name,
+    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
     detail: `${row.goalsFor} but(s) marqué(s) · ${row.scoredMatches} match(s) scoré(s)`,
     value: `${formatDecimal(avgGoalsFor(row))}/m`
   }));
 
   renderRanking(el.goalsAgainstRanking, scoredRows.slice().sort((a, b) => avgGoalsAgainst(a) - avgGoalsAgainst(b) || a.goalsAgainst - b.goalsAgainst || a.name.localeCompare(b.name)), row => ({
-    title: row.name,
+    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
     detail: `${row.goalsAgainst} but(s) pris · ${row.scoredMatches} match(s) scoré(s)`,
     value: `${formatDecimal(avgGoalsAgainst(row))}/m`
   }));
@@ -1396,19 +1500,88 @@ function renderStats() {
   renderExtraStats(rows, events, eligibleEloRows);
 }
 
-function renderSeasonChampion(eligibleRows, closedSeason) {
+function getEligibleEloRows(monthKey) {
+  return buildPlayerStats(monthKey)
+    .filter(row => row.played >= MIN_ELO_MATCHES)
+    .sort((a, b) => b.elo - a.elo || b.wins - a.wins || winRate(b) - winRate(a) || a.name.localeCompare(b.name));
+}
+
+function buildCumulativeSeasonAwards() {
+  const awards = new Map();
+  const ensure = name => {
+    const key = normalizeName(name);
+    if (!awards.has(key)) awards.set(key, { gold: 0, silver: 0, bronze: 0 });
+    return awards.get(key);
+  };
+
+  getAvailableMonthKeys(false)
+    .filter(month => isFrozenMonth(month))
+    .forEach(month => {
+      getEligibleEloRows(month).slice(0, 3).forEach((row, index) => {
+        const type = ["gold", "silver", "bronze"][index];
+        ensure(row.name)[type] += 1;
+      });
+    });
+
+  return awards;
+}
+
+function renderSeasonPodium(eligibleRows, closedSeason, cumulativeAwards) {
   if (!el.seasonChampion) return;
-  const leader = eligibleRows[0];
-  if (!leader) {
+  const podium = eligibleRows.slice(0, 3);
+  if (!podium.length) {
     el.seasonChampion.className = "season-champion empty-state";
-    el.seasonChampion.textContent = `Aucun champion pour ${formatMonthLabel(selectedStatsMonth)} : aucun joueur n’a atteint ${MIN_ELO_MATCHES} matchs.`;
+    el.seasonChampion.textContent = `Aucun podium pour ${formatMonthLabel(selectedStatsMonth)} : aucun joueur n’a atteint ${MIN_ELO_MATCHES} matchs.`;
     return;
   }
 
-  el.seasonChampion.className = `season-champion ${closedSeason ? "champion-awarded" : "leader-provisional"}`;
-  el.seasonChampion.innerHTML = closedSeason
-    ? `<span class="champion-star">★</span><div><small>Champion de ${escapeHtml(formatMonthLabel(selectedStatsMonth))}</small><strong>${escapeHtml(leader.name)}</strong><small>${Math.round(leader.elo)} Elo · ${leader.wins} victoire(s) en ${leader.played} match(s)</small></div>`
-    : `<span class="champion-star provisional">☆</span><div><small>Leader provisoire de ${escapeHtml(formatMonthLabel(selectedStatsMonth))}</small><strong>${escapeHtml(leader.name)}</strong><small>${Math.round(leader.elo)} Elo · l’étoile sera attribuée à la fin du mois</small></div>`;
+  const statusLabel = closedSeason ? "Podium final" : "Podium provisoire";
+  el.seasonChampion.className = `season-champion season-podium ${closedSeason ? "champion-awarded" : "leader-provisional"}`;
+  el.seasonChampion.innerHTML = `
+    <div class="season-podium-header">
+      <div>
+        <small>${escapeHtml(statusLabel)}</small>
+        <strong>${escapeHtml(formatMonthLabel(selectedStatsMonth))}</strong>
+      </div>
+      <small>${closedSeason ? "Les étoiles ont été ajoutées au palmarès des joueurs." : "Les étoiles seront ajoutées au palmarès à la fin du mois."}</small>
+    </div>
+    <div class="season-podium-list">
+      ${podium.map((row, index) => {
+        const place = index + 1;
+        const type = awardTypeForPlace(place);
+        return `
+          <article class="podium-place podium-${type}">
+            <span class="award-star ${type} ${closedSeason ? "" : "provisional"}" title="${closedSeason ? "Classement final" : "Classement provisoire"}">★</span>
+            <div>
+              <small>${place}${place === 1 ? "er" : "e"} place</small>
+              <strong>${renderPlayerNameWithAwards(row.name, cumulativeAwards)}</strong>
+              <small>${Math.round(row.elo)} Elo · ${row.wins} victoire(s) en ${row.played} match(s)</small>
+            </div>
+          </article>`;
+      }).join("")}
+    </div>`;
+}
+
+function awardTypeForPlace(place) {
+  return place === 1 ? "gold" : place === 2 ? "silver" : "bronze";
+}
+
+function renderPlayerNameWithAwards(name, cumulativeAwards, seasonPlace = null, provisional = false) {
+  const totals = cumulativeAwards.get(normalizeName(name)) || { gold: 0, silver: 0, bronze: 0 };
+  const seasonStar = seasonPlace
+    ? `<span class="season-name-star ${awardTypeForPlace(seasonPlace)} ${provisional ? "provisional" : ""}" title="${seasonPlace}${seasonPlace === 1 ? "er" : "e"} de ${escapeHtml(formatMonthLabel(selectedStatsMonth))}${provisional ? " · provisoire" : ""}">★</span>`
+    : "";
+  return `<span class="player-name-with-awards">${seasonStar}<span>${escapeHtml(name)}</span>${renderAwardTotals(totals)}</span>`;
+}
+
+function renderAwardTotals(totals) {
+  const badges = [
+    ["gold", totals.gold],
+    ["silver", totals.silver],
+    ["bronze", totals.bronze]
+  ].filter(([, count]) => count > 0);
+  if (!badges.length) return "";
+  return `<span class="award-totals" aria-label="Étoiles cumulées">${badges.map(([type, count]) => `<span class="award-count ${type}" title="${count} étoile(s) ${type === "gold" ? "d’or" : type === "silver" ? "d’argent" : "de bronze"}">★${count}</span>`).join("")}</span>`;
 }
 
 function renderRanking(container, rows, mapRow, options = {}) {
@@ -1424,11 +1597,12 @@ function renderRanking(container, rows, mapRow, options = {}) {
   container.className = "leaderboard";
   container.innerHTML = rows.map((row, index) => {
     const mapped = mapRow(row, index);
+    const placeClass = options.podium && index < 3 ? `season-${awardTypeForPlace(index + 1)}` : "";
     return `
-      <article class="leader-row ${options.highlightFirst && index === 0 ? "monthly-champion" : ""}">
+      <article class="leader-row ${placeClass}">
         <span class="rank">${index + 1}</span>
         <div>
-          <strong>${escapeHtml(mapped.title)}</strong>
+          <strong>${mapped.titleHtml || escapeHtml(mapped.title)}</strong>
           <div class="stat-line">${escapeHtml(mapped.detail)}</div>
         </div>
         <span class="metric-chip">${escapeHtml(mapped.value)}</span>
@@ -1869,6 +2043,7 @@ el.archiveMonthFilter?.addEventListener("change", () => {
 });
 
 el.adminModeBtn?.addEventListener("click", toggleAdminMode);
+el.competitionAdminModeBtn?.addEventListener("click", toggleAdminMode);
 
 document.querySelectorAll("[data-selection-action]").forEach(button => {
   button.addEventListener("click", () => {
