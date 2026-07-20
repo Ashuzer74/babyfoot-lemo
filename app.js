@@ -1474,7 +1474,7 @@ function renderStats() {
   }
 
   renderRanking(el.eloRanking, eligibleEloRows, row => ({
-    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards, seasonPlaces.get(normalizeName(row.name)), !closedSeason),
+    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
     detail: `${row.played} match(s) · ${row.wins} victoire(s) · dernier mouvement ${formatSignedDecimal(row.lastEloDelta || 0)}`,
     value: Math.round(row.elo)
   }), { podium: true });
@@ -1572,22 +1572,44 @@ function awardTypeForPlace(place) {
   return place === 1 ? "gold" : place === 2 ? "silver" : "bronze";
 }
 
-function renderPlayerNameWithAwards(name, cumulativeAwards, seasonPlace = null, provisional = false) {
-  const totals = cumulativeAwards.get(normalizeName(name)) || { gold: 0, silver: 0, bronze: 0 };
-  const seasonStar = seasonPlace
-    ? renderAwardStar(awardTypeForPlace(seasonPlace), `season-name-star ${provisional ? "provisional" : ""}`, `${seasonPlace}${seasonPlace === 1 ? "er" : "e"} de ${formatMonthLabel(selectedStatsMonth)}${provisional ? " · provisoire" : ""}`)
-    : "";
-  return `<span class="player-name-with-awards">${seasonStar}<span>${escapeHtml(name)}</span>${renderAwardTotals(totals)}</span>`;
+function renderPlayerNameWithAwards(name, cumulativeAwards) {
+  const totals = cumulativeAwards.get(normalizeName(name)) || {
+    gold: 0,
+    silver: 0,
+    bronze: 0
+  };
+
+  return `
+    <span class="player-name-with-awards">
+      <span class="player-award-name">${escapeHtml(name)}</span>
+      ${renderAwardTotals(totals)}
+    </span>
+  `;
 }
 
 function renderAwardTotals(totals) {
-  const badges = [
-    ["gold", totals.gold],
-    ["silver", totals.silver],
-    ["bronze", totals.bronze]
-  ].filter(([, count]) => count > 0);
-  if (!badges.length) return "";
-  return `<span class="award-totals" aria-label="Étoiles cumulées">${badges.map(([type, count]) => `<span class="award-count award-${type}" title="${count} étoile(s) ${type === "gold" ? "d’or" : type === "silver" ? "d’argent" : "de bronze"}">${renderAwardStar(type, "award-count-icon")}<span>${count}</span></span>`).join("")}</span>`;
+  const awards = [
+    { type: "gold", count: totals.gold, label: "d’or" },
+    { type: "silver", count: totals.silver, label: "d’argent" },
+    { type: "bronze", count: totals.bronze, label: "de bronze" }
+  ].filter(award => award.count > 0);
+
+  if (!awards.length) return "";
+
+  return `
+    <span class="award-totals" aria-label="Récompenses cumulées">
+      ${awards.map(award => `
+        <span
+          class="award-inline award-${award.type}"
+          title="${award.count} étoile(s) ${award.label}"
+          aria-label="${award.count} étoile(s) ${award.label}"
+        >
+          <span class="award-number">${award.count}</span>
+          ${renderAwardStar(award.type, "award-inline-star")}
+        </span>
+      `).join("")}
+    </span>
+  `;
 }
 
 function renderRanking(container, rows, mapRow, options = {}) {
