@@ -215,9 +215,9 @@ function saveLocalBackup() {
 function isSupabaseConfigured() {
   return Boolean(
     supabaseConfig.url &&
-    supabaseConfig.anonKey &&
+    (supabaseConfig.publishableKey || supabaseConfig.anonKey) &&
     !supabaseConfig.url.includes("TON-PROJET") &&
-    !supabaseConfig.anonKey.includes("TA-CLE")
+    !(supabaseConfig.publishableKey || supabaseConfig.anonKey).includes("TA-CLE")
   );
 }
 
@@ -227,7 +227,17 @@ function setupSupabase() {
     return;
   }
 
-  if (String(supabaseConfig.anonKey || "").startsWith("sb_secret_")) {
+  try {
+    const configuredUrl = new URL(String(supabaseConfig.url).trim());
+    if (configuredUrl.protocol !== "https:" || !configuredUrl.hostname.endsWith(".supabase.co")) {
+      throw new Error("URL Supabase invalide");
+    }
+  } catch {
+    setSyncStatus("Erreur : l’URL Supabase de config.js est invalide.", "error");
+    return;
+  }
+
+  if (String((supabaseConfig.publishableKey || supabaseConfig.anonKey) || "").startsWith("sb_secret_")) {
     setSyncStatus("Erreur : la clé Supabase utilisée est une clé secrète. Utilise la Publishable key.", "error");
     return;
   }
@@ -264,7 +274,7 @@ function wait(delayMs) {
 
 async function supabaseRequest(path, options = {}, maxAttempts = 3) {
   const baseUrl = getSupabaseBaseUrl();
-  const key = String(supabaseConfig.anonKey || "").trim();
+  const key = String((supabaseConfig.publishableKey || supabaseConfig.anonKey) || "").trim();
   const url = `${baseUrl}${path}`;
   let lastError = null;
 
@@ -282,7 +292,9 @@ async function supabaseRequest(path, options = {}, maxAttempts = 3) {
         signal: controller.signal,
         headers: {
           apikey: key,
-          Authorization: `Bearer ${key}`,
+          // Les nouvelles clés sb_publishable_ ne sont pas des JWT.
+          // Authorization est conservé uniquement pour les anciennes clés anon JWT.
+          ...(key.startsWith("eyJ") ? { Authorization: `Bearer ${key}` } : {}),
           Accept: "application/json",
           ...(options.body ? { "Content-Type": "application/json" } : {}),
           ...(options.headers || {})
