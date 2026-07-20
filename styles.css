@@ -691,37 +691,98 @@ input:focus, select:focus {
 .podium-place strong { display: block; margin: 3px 0; overflow-wrap: anywhere; }
 .podium-place small { display: block; color: var(--steel); line-height: 1.4; }
 .award-star {
+  --award-color: #cd7f32;
+  --award-light: #f0b27a;
+  --award-dark: #8a461d;
   display: grid;
   place-items: center;
   width: 50px;
   height: 50px;
   flex: 0 0 50px;
+  border: 1px solid color-mix(in srgb, var(--award-color) 58%, white);
   border-radius: 50%;
-  font-size: 1.75rem;
-  font-weight: 950;
+  color: var(--award-color) !important;
+  background: color-mix(in srgb, var(--award-light) 26%, white);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 4px 12px color-mix(in srgb, var(--award-color) 24%, transparent);
 }
-.award-star.gold, .season-name-star.gold, .award-count.gold { color: #a87500; }
-.award-star.silver, .season-name-star.silver, .award-count.silver { color: #6f7882; }
-.award-star.bronze, .season-name-star.bronze, .award-count.bronze { color: #995b2d; }
-.award-star.gold { background: rgba(255,202,44,0.28); }
-.award-star.silver { background: rgba(170,181,192,0.28); }
-.award-star.bronze { background: rgba(190,112,58,0.22); }
-.award-star.provisional, .season-name-star.provisional { opacity: 0.55; filter: saturate(0.55); }
+.award-star svg {
+  width: 30px;
+  height: 30px;
+  display: block;
+  fill: currentColor !important;
+  stroke: var(--award-dark);
+  stroke-width: 0.55;
+  filter: drop-shadow(0 1px 0 rgba(255,255,255,0.8));
+}
+.award-gold {
+  --award-color: #f5b700;
+  --award-light: #ffe27a;
+  --award-dark: #9c6b00;
+  color: #f5b700 !important;
+}
+.award-silver {
+  --award-color: #a8b1bc;
+  --award-light: #eef2f6;
+  --award-dark: #626d78;
+  color: #8d99a6 !important;
+}
+.award-bronze {
+  --award-color: #cd7f32;
+  --award-light: #efb47d;
+  --award-dark: #7b3f18;
+  color: #cd7f32 !important;
+}
+.award-star.provisional, .season-name-star.provisional { opacity: 0.8; }
 .player-name-with-awards { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; }
-.season-name-star { font-size: 1.2rem; line-height: 1; }
-.award-totals { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.season-name-star {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  color: var(--award-color) !important;
+}
+.season-name-star svg {
+  width: 21px;
+  height: 21px;
+  display: block;
+  fill: currentColor !important;
+  stroke: var(--award-dark);
+  stroke-width: 0.65;
+  filter: drop-shadow(0 1px 1px rgba(7,26,47,0.2));
+}
+.award-totals { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
 .award-count {
+  --award-color: #cd7f32;
+  --award-light: #efb47d;
+  --award-dark: #7b3f18;
   display: inline-flex;
   align-items: center;
-  padding: 3px 7px;
+  gap: 3px;
+  padding: 3px 7px 3px 5px;
+  border: 1px solid color-mix(in srgb, var(--award-color) 45%, white);
   border-radius: 999px;
+  color: var(--award-dark) !important;
+  background: color-mix(in srgb, var(--award-light) 23%, white);
   font-size: 0.75rem;
   font-weight: 950;
   line-height: 1;
 }
-.award-count.gold { background: rgba(255,202,44,0.2); }
-.award-count.silver { background: rgba(170,181,192,0.2); }
-.award-count.bronze { background: rgba(190,112,58,0.16); }
+.award-count-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  color: var(--award-color) !important;
+}
+.award-count-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+  fill: currentColor !important;
+  stroke: var(--award-dark);
+  stroke-width: 0.65;
+}
 .leader-row.season-gold { border-color: rgba(194,145,0,0.3); background: linear-gradient(135deg, rgba(255,202,44,0.14), rgba(255,255,255,0.92)); }
 .leader-row.season-silver { border-color: rgba(130,142,154,0.25); background: linear-gradient(135deg, rgba(180,190,200,0.12), rgba(255,255,255,0.92)); }
 .leader-row.season-bronze { border-color: rgba(153,91,45,0.24); background: linear-gradient(135deg, rgba(190,112,58,0.1), rgba(255,255,255,0.92)); }
@@ -742,4 +803,15 @@ input:focus, select:focus {
   .history-actions { justify-content: flex-start; }
   .season-podium-header { align-items: flex-start; flex-direction: column; }
   .season-podium-list { grid-template-columns: 1fr; }
+}
+
+@supports not (color: color-mix(in srgb, red 50%, white)) {
+  .award-star { border-color: rgba(205,127,50,0.45); background: #fff3e8; box-shadow: 0 4px 12px rgba(205,127,50,0.18); }
+  .award-star.award-gold { border-color: rgba(245,183,0,0.55); background: #fff7d6; box-shadow: 0 4px 12px rgba(245,183,0,0.2); }
+  .award-star.award-silver { border-color: rgba(141,153,166,0.5); background: #f1f4f7; box-shadow: 0 4px 12px rgba(98,109,120,0.16); }
+  .award-star.award-bronze { border-color: rgba(205,127,50,0.5); background: #fff0e2; }
+  .award-count { border-color: rgba(205,127,50,0.4); background: #fff3e8; }
+  .award-count.award-gold { border-color: rgba(245,183,0,0.45); background: #fff7d6; }
+  .award-count.award-silver { border-color: rgba(141,153,166,0.45); background: #f1f4f7; }
+  .award-count.award-bronze { border-color: rgba(205,127,50,0.45); background: #fff0e2; }
 }
