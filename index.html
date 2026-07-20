@@ -21,7 +21,7 @@
       </div>
 
       <p class="hero-text">
-        Matchs 1v1, 2v2, tournoi et championnat sur plusieurs jours. Les résultats sont sauvegardés
+        Matchs 1v1, 1v2, 2v2, tournoi et championnat sur plusieurs jours. Les résultats sont sauvegardés
         dans Supabase et alimentent automatiquement les classements, les statistiques et l’Elo.
       </p>
 
@@ -31,6 +31,7 @@
 
       <div class="hero-tags">
         <span>1v1</span>
+        <span>1v2</span>
         <span>2v2</span>
         <span>Tournoi</span>
         <span>Championnat</span>
@@ -71,13 +72,14 @@
             <div class="section-title">
               <div>
                 <p class="eyebrow">Match direct</p>
-                <h2>1v1 / 2v2</h2>
+                <h2>1v1 / 1v2 / 2v2</h2>
               </div>
               <button class="ghost-button" id="randomTeamsBtn" type="button">Équipes aléatoires</button>
             </div>
 
-            <div class="segmented-group" role="group" aria-label="Mode de match">
+            <div class="segmented-group standard-mode-group" role="group" aria-label="Mode de match">
               <button type="button" class="segment active" data-standard-mode="1v1">1v1</button>
+              <button type="button" class="segment" data-standard-mode="1v2">1v2</button>
               <button type="button" class="segment" data-standard-mode="2v2">2v2</button>
             </div>
 
@@ -93,7 +95,7 @@
                   <strong>Équipe A</strong>
                 </div>
                 <select id="teamA1" aria-label="Équipe A joueur 1"></select>
-                <select id="teamA2" class="standard-double-only" aria-label="Équipe A joueur 2"></select>
+                <select id="teamA2" class="standard-team-a-second hidden" aria-label="Équipe A joueur 2"></select>
                 <label class="score-final-label">
                   Score final A
                   <input id="standardScoreA" type="number" min="0" step="1" value="0" inputmode="numeric" />
@@ -106,7 +108,7 @@
                   <strong>Équipe B</strong>
                 </div>
                 <select id="teamB1" aria-label="Équipe B joueur 1"></select>
-                <select id="teamB2" class="standard-double-only" aria-label="Équipe B joueur 2"></select>
+                <select id="teamB2" class="standard-team-b-second hidden" aria-label="Équipe B joueur 2"></select>
                 <label class="score-final-label">
                   Score final B
                   <input id="standardScoreB" type="number" min="0" step="1" value="0" inputmode="numeric" />
@@ -120,12 +122,20 @@
           </section>
 
           <section class="panel section archive-section">
-            <div class="section-title">
+            <div class="section-title archive-title">
               <div>
                 <p class="eyebrow">Archives</p>
                 <h2>Historique des matchs</h2>
               </div>
+              <div class="archive-toolbar">
+                <label>
+                  Mois consulté
+                  <select id="archiveMonthFilter" aria-label="Filtrer les archives par mois"></select>
+                </label>
+                <button class="ghost-button" id="adminModeBtn" type="button">Activer le mode admin</button>
+              </div>
             </div>
+            <p id="archiveFreezeNote" class="muted-note"></p>
             <div id="standardHistoryList" class="history-list empty-state">Aucun résultat enregistré.</div>
           </section>
         </div>
@@ -137,11 +147,32 @@
             <div class="section-title">
               <div>
                 <p class="eyebrow">Participants</p>
-                <h2>Joueurs disponibles</h2>
+                <h2>Sélection des joueurs</h2>
               </div>
             </div>
-            <p class="muted-note">Les tournois et championnats utilisent les joueurs ajoutés dans l’onglet Matchs.</p>
-            <div id="competitionPlayersList" class="pill-list" aria-live="polite"></div>
+            <p class="muted-note">Choisis uniquement les joueurs qui participent. La sélection du tournoi et celle du championnat sont indépendantes.</p>
+            <div class="competition-selection-grid">
+              <section class="selection-card">
+                <div class="selection-card-header">
+                  <h3>Tournoi</h3>
+                  <div class="selection-actions">
+                    <button type="button" class="mini-ghost-button" data-selection-action="all" data-selection-type="tournament">Tout</button>
+                    <button type="button" class="mini-ghost-button" data-selection-action="none" data-selection-type="tournament">Aucun</button>
+                  </div>
+                </div>
+                <div id="tournamentPlayerSelection" class="player-check-list"></div>
+              </section>
+              <section class="selection-card">
+                <div class="selection-card-header">
+                  <h3>Championnat</h3>
+                  <div class="selection-actions">
+                    <button type="button" class="mini-ghost-button" data-selection-action="all" data-selection-type="championship">Tout</button>
+                    <button type="button" class="mini-ghost-button" data-selection-action="none" data-selection-type="championship">Aucun</button>
+                  </div>
+                </div>
+                <div id="championshipPlayerSelection" class="player-check-list"></div>
+              </section>
+            </div>
           </section>
 
           <section class="panel section tournament-section">
@@ -213,25 +244,40 @@
       <section id="pageStats" class="page">
         <div class="stats-layout">
           <section class="panel section stats-intro">
-            <div class="section-title">
+            <div class="section-title stats-season-title">
               <div>
                 <p class="eyebrow">Statistiques</p>
-                <h2>Classements globaux</h2>
+                <h2>Saisons mensuelles</h2>
               </div>
+              <div id="statsSeasonStatus" class="season-status"></div>
             </div>
-            <p class="muted-note">
-              L’Elo est une cote dynamique : battre un joueur mieux classé rapporte plus de points, tandis qu’une victoire contre un joueur moins bien classé rapporte moins. En 2v2, la cote de l’équipe correspond à la moyenne Elo des deux joueurs.
-            </p>
+            <div id="statsMonthTabs" class="month-tabs" aria-label="Choisir une saison mensuelle"></div>
+            <div class="elo-rules">
+              <h3>Règles de l’Elo</h3>
+              <ol>
+                <li>Chaque joueur commence chaque mois à <strong>1000 Elo</strong>.</li>
+                <li>Seuls les joueurs du match gagnent ou perdent des points. Un joueur qui ne joue pas ne bouge jamais.</li>
+                <li>La force d’une équipe correspond à la moyenne Elo de ses joueurs.</li>
+                <li>Battre une équipe mieux classée rapporte davantage. Une victoire attendue rapporte moins.</li>
+                <li>La variation totale est équilibrée : les points gagnés par une équipe sont retirés à l’autre, puis répartis entre ses joueurs. Cette règle fonctionne aussi en 1v2.</li>
+                <li>L’écart du score ne change pas l’Elo : seule la victoire compte.</li>
+                <li>Il faut au moins <strong>5 matchs dans le mois</strong> pour apparaître au classement Elo.</li>
+              </ol>
+            </div>
           </section>
 
+          <section class="panel section season-champion-card">
+            <div id="seasonChampion" class="season-champion empty-state">Aucun champion mensuel pour cette saison.</div>
+          </section>
 
           <section class="panel section stat-card">
             <div class="section-title compact-title">
               <div>
                 <p class="eyebrow">Cote dynamique</p>
-                <h2>Elo</h2>
+                <h2>Classement Elo mensuel</h2>
               </div>
             </div>
+            <div id="eloQualificationNote" class="qualification-note"></div>
             <div id="eloRanking" class="leaderboard empty-state">Aucun match enregistré.</div>
           </section>
 
