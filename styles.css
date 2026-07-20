@@ -443,6 +443,7 @@ input:focus, select:focus {
 }
 .tournament-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .tournament-actions button { padding: 10px 12px; background: linear-gradient(135deg, rgba(0,87,168,0.96), rgba(0,138,212,0.92)); color: var(--white); font-weight: 800; }
+.tournament-actions .competition-delete-button { background: rgba(190, 38, 38, 0.08); color: var(--danger); border: 1px solid rgba(190, 38, 38, 0.24); }
 .match-winner { border-color: rgba(21,165,103,0.24); background: linear-gradient(135deg, rgba(21,165,103,0.13), rgba(255,255,255,0.92)); }
 .selected-winner { color: var(--success); }
 .bye-row { opacity: 0.75; }
@@ -463,6 +464,8 @@ input:focus, select:focus {
 .match-title small { display: block; margin-top: 4px; color: var(--steel); }
 .vs-text { align-self: center; text-align: center; font-weight: 900; color: var(--lemo-blue); }
 .save-mini-button { padding: 12px 14px; white-space: nowrap; }
+.competition-match-actions { display: grid; gap: 7px; align-self: stretch; }
+.competition-match-actions button { width: 100%; }
 
 .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .summary-item { min-height: 88px; }
@@ -484,7 +487,7 @@ input:focus, select:focus {
   .players-section, .standard-match-section, .tournament-section, .championship-section, .archive-section, .stat-card { grid-column: span 12; }
   .archive-grid { grid-template-columns: 1fr; }
   .championship-match { grid-template-columns: 1fr 150px 1fr 26px 1fr; }
-  .championship-match .save-mini-button { grid-column: 1 / -1; }
+  .championship-match .competition-match-actions { grid-column: 1 / -1; }
 }
 
 @media (max-width: 760px) {
@@ -655,9 +658,6 @@ input:focus, select:focus {
 }
 .season-champion-card { grid-column: span 12; }
 .season-champion {
-  display: flex;
-  align-items: center;
-  gap: 18px;
   min-height: 112px;
   padding: 20px;
   border: 1px solid rgba(0,87,168,0.14);
@@ -666,33 +666,65 @@ input:focus, select:focus {
 }
 .season-champion.champion-awarded {
   border-color: rgba(194,145,0,0.28);
-  background: linear-gradient(135deg, rgba(255,202,44,0.18), rgba(255,255,255,0.94));
+  background: linear-gradient(135deg, rgba(255,202,44,0.13), rgba(255,255,255,0.94));
 }
-.season-champion strong { display: block; margin: 3px 0; font-size: 1.32rem; }
-.season-champion small { display: block; color: var(--steel); line-height: 1.45; }
-.champion-star {
+.season-podium { display: grid; gap: 16px; }
+.season-podium-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.season-podium-header strong { display: block; margin-top: 3px; font-size: 1.3rem; }
+.season-podium-header small { color: var(--steel); line-height: 1.45; }
+.season-podium-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.podium-place {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid rgba(7,26,47,0.1);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.82);
+}
+.podium-place strong { display: block; margin: 3px 0; overflow-wrap: anywhere; }
+.podium-place small { display: block; color: var(--steel); line-height: 1.4; }
+.award-star {
   display: grid;
   place-items: center;
-  width: 62px;
-  height: 62px;
-  flex: 0 0 62px;
+  width: 50px;
+  height: 50px;
+  flex: 0 0 50px;
   border-radius: 50%;
-  background: rgba(255,202,44,0.28);
-  color: #9b7200;
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 950;
 }
-.champion-star.provisional { background: rgba(0,87,168,0.1); color: var(--lemo-blue); }
-.qualification-note {
-  margin: -2px 0 12px;
-  color: var(--steel);
-  font-size: 0.9rem;
-  line-height: 1.45;
+.award-star.gold, .season-name-star.gold, .award-count.gold { color: #a87500; }
+.award-star.silver, .season-name-star.silver, .award-count.silver { color: #6f7882; }
+.award-star.bronze, .season-name-star.bronze, .award-count.bronze { color: #995b2d; }
+.award-star.gold { background: rgba(255,202,44,0.28); }
+.award-star.silver { background: rgba(170,181,192,0.28); }
+.award-star.bronze { background: rgba(190,112,58,0.22); }
+.award-star.provisional, .season-name-star.provisional { opacity: 0.55; filter: saturate(0.55); }
+.player-name-with-awards { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.season-name-star { font-size: 1.2rem; line-height: 1; }
+.award-totals { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.award-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 950;
+  line-height: 1;
 }
-.leader-row.monthly-champion {
-  border-color: rgba(194,145,0,0.26);
-  background: linear-gradient(135deg, rgba(255,202,44,0.15), rgba(255,255,255,0.92));
-}
+.award-count.gold { background: rgba(255,202,44,0.2); }
+.award-count.silver { background: rgba(170,181,192,0.2); }
+.award-count.bronze { background: rgba(190,112,58,0.16); }
+.leader-row.season-gold { border-color: rgba(194,145,0,0.3); background: linear-gradient(135deg, rgba(255,202,44,0.14), rgba(255,255,255,0.92)); }
+.leader-row.season-silver { border-color: rgba(130,142,154,0.25); background: linear-gradient(135deg, rgba(180,190,200,0.12), rgba(255,255,255,0.92)); }
+.leader-row.season-bronze { border-color: rgba(153,91,45,0.24); background: linear-gradient(135deg, rgba(190,112,58,0.1), rgba(255,255,255,0.92)); }
 .frozen-match { opacity: 0.76; }
 .tournament-actions button:disabled,
 .save-mini-button:disabled {
@@ -708,5 +740,6 @@ input:focus, select:focus {
   .archive-toolbar label, .archive-toolbar .ghost-button { width: 100%; }
   .competition-selection-grid { grid-template-columns: 1fr; }
   .history-actions { justify-content: flex-start; }
-  .season-champion { align-items: flex-start; }
+  .season-podium-header { align-items: flex-start; flex-direction: column; }
+  .season-podium-list { grid-template-columns: 1fr; }
 }
