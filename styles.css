@@ -513,3 +513,200 @@ input:focus, select:focus {
   .competition-controls { grid-template-columns: 1fr; }
   .competition-archive-grid { grid-template-columns: 1fr; }
 }
+
+/* Ajouts : 1v2, archives mensuelles, sélections et saisons */
+.standard-mode-group { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.archive-title { align-items: flex-end; }
+.archive-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.archive-toolbar label {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+  color: var(--steel);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+.archive-toolbar select { padding: 11px 14px; }
+.history-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.delete-match-button {
+  padding: 9px 12px;
+  border: 1px solid rgba(190, 38, 38, 0.24);
+  border-radius: 999px;
+  background: rgba(190, 38, 38, 0.08);
+  color: var(--danger);
+  font-weight: 850;
+  cursor: pointer;
+}
+.delete-match-button:hover { background: rgba(190, 38, 38, 0.14); }
+
+.competition-selection-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.selection-card {
+  padding: 16px;
+  border: 1px solid rgba(0, 87, 168, 0.12);
+  border-radius: var(--radius-lg);
+  background: rgba(255,255,255,0.78);
+}
+.selection-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.selection-actions { display: flex; gap: 7px; }
+.mini-ghost-button {
+  padding: 8px 10px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 87, 168, 0.08);
+  color: var(--lemo-blue);
+  font-weight: 800;
+  cursor: pointer;
+}
+.player-check-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 9px;
+}
+.player-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 87, 168, 0.1);
+  border-radius: 12px;
+  background: rgba(0, 87, 168, 0.045);
+  color: var(--deep-navy);
+  font-weight: 750;
+  cursor: pointer;
+}
+.player-check input {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  accent-color: var(--lemo-blue);
+}
+
+.stats-season-title { align-items: center; }
+.season-status {
+  padding: 9px 13px;
+  border-radius: 999px;
+  font-size: 0.86rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.season-status.current { background: rgba(21,165,103,0.13); color: var(--success); }
+.season-status.closed { background: rgba(7,26,47,0.08); color: var(--steel); }
+.month-tabs {
+  display: flex;
+  gap: 9px;
+  overflow-x: auto;
+  padding: 3px 0 10px;
+  scrollbar-width: thin;
+}
+.month-tab {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(7,26,47,0.06);
+  color: var(--deep-navy);
+  font-weight: 800;
+  cursor: pointer;
+}
+.month-tab.active {
+  background: linear-gradient(135deg, var(--lemo-blue), var(--lemo-blue-2));
+  color: var(--white);
+  box-shadow: 0 10px 24px rgba(0,87,168,0.18);
+}
+.elo-rules {
+  margin-top: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(0, 87, 168, 0.11);
+  border-radius: var(--radius-lg);
+  background: rgba(0,87,168,0.045);
+}
+.elo-rules h3 { margin-bottom: 9px; }
+.elo-rules ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding-left: 22px;
+  color: var(--steel);
+  line-height: 1.48;
+}
+.season-champion-card { grid-column: span 12; }
+.season-champion {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 112px;
+  padding: 20px;
+  border: 1px solid rgba(0,87,168,0.14);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(0,87,168,0.08), rgba(255,255,255,0.9));
+}
+.season-champion.champion-awarded {
+  border-color: rgba(194,145,0,0.28);
+  background: linear-gradient(135deg, rgba(255,202,44,0.18), rgba(255,255,255,0.94));
+}
+.season-champion strong { display: block; margin: 3px 0; font-size: 1.32rem; }
+.season-champion small { display: block; color: var(--steel); line-height: 1.45; }
+.champion-star {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  flex: 0 0 62px;
+  border-radius: 50%;
+  background: rgba(255,202,44,0.28);
+  color: #9b7200;
+  font-size: 2rem;
+  font-weight: 950;
+}
+.champion-star.provisional { background: rgba(0,87,168,0.1); color: var(--lemo-blue); }
+.qualification-note {
+  margin: -2px 0 12px;
+  color: var(--steel);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.leader-row.monthly-champion {
+  border-color: rgba(194,145,0,0.26);
+  background: linear-gradient(135deg, rgba(255,202,44,0.15), rgba(255,255,255,0.92));
+}
+.frozen-match { opacity: 0.76; }
+.tournament-actions button:disabled,
+.save-mini-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .archive-title, .stats-season-title { align-items: stretch; flex-direction: column; }
+  .archive-toolbar { justify-content: stretch; }
+  .archive-toolbar label, .archive-toolbar .ghost-button { width: 100%; }
+  .competition-selection-grid { grid-template-columns: 1fr; }
+  .history-actions { justify-content: flex-start; }
+  .season-champion { align-items: flex-start; }
+}
