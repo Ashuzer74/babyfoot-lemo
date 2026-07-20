@@ -27,7 +27,6 @@
 
       <p class="hero-joke">
         Ici, les frappes sales, les murs humains et les joueurs qui parlent trop finissent tous au même endroit : dans les stats.
-        Angel à inscris 2 but avec le genou... maintenant 3.
       </p>
 
       <div class="hero-tags">
@@ -221,12 +220,16 @@
           </section>
 
           <section class="panel section archive-section">
-            <div class="section-title">
+            <div class="section-title archive-title">
               <div>
                 <p class="eyebrow">Archives</p>
                 <h2>Historique tournois & championnats</h2>
               </div>
+              <div class="archive-toolbar">
+                <button class="ghost-button" id="competitionAdminModeBtn" type="button">Activer le mode admin</button>
+              </div>
             </div>
+            <p id="competitionArchiveNote" class="muted-note"></p>
 
             <div class="archive-grid competition-archive-grid">
               <div>
@@ -263,6 +266,7 @@
                 <li>La variation totale est équilibrée : les points gagnés par une équipe sont retirés à l’autre, puis répartis entre ses joueurs. Cette règle fonctionne aussi en 1v2.</li>
                 <li>L’écart du score ne change pas l’Elo : seule la victoire compte.</li>
                 <li>Il faut au moins <strong>5 matchs dans le mois</strong> pour apparaître au classement Elo.</li>
+                <li>À la fin de chaque saison, les trois premiers reçoivent une étoile d’or, d’argent ou de bronze. Ces étoiles restent sur leur nom et se cumulent au fil des saisons.</li>
               </ol>
             </div>
           </section>
@@ -326,7 +330,6 @@
     </main>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
