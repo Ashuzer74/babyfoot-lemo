@@ -1526,6 +1526,12 @@ function buildCumulativeSeasonAwards() {
   return awards;
 }
 
+function renderAwardStar(type, className = "award-star", label = "") {
+  const safeType = ["gold", "silver", "bronze"].includes(type) ? type : "bronze";
+  const aria = label ? ` role="img" aria-label="${escapeHtml(label)}"` : ' aria-hidden="true"';
+  return `<span class="${className} award-${safeType}"${aria}><svg viewBox="0 0 24 24" focusable="false"><path d="M12 1.8l3.09 6.26 6.91 1-5 4.87 1.18 6.88L12 17.56 5.82 20.81 7 13.93 2 9.06l6.91-1L12 1.8z"></path></svg></span>`;
+}
+
 function renderSeasonPodium(eligibleRows, closedSeason, cumulativeAwards) {
   if (!el.seasonChampion) return;
   const podium = eligibleRows.slice(0, 3);
@@ -1551,7 +1557,7 @@ function renderSeasonPodium(eligibleRows, closedSeason, cumulativeAwards) {
         const type = awardTypeForPlace(place);
         return `
           <article class="podium-place podium-${type}">
-            <span class="award-star ${type} ${closedSeason ? "" : "provisional"}" title="${closedSeason ? "Classement final" : "Classement provisoire"}">★</span>
+            ${renderAwardStar(type, `award-star ${closedSeason ? "" : "provisional"}`, `${place}${place === 1 ? "er" : "e"} du classement ${closedSeason ? "final" : "provisoire"}`)}
             <div>
               <small>${place}${place === 1 ? "er" : "e"} place</small>
               <strong>${renderPlayerNameWithAwards(row.name, cumulativeAwards)}</strong>
@@ -1569,7 +1575,7 @@ function awardTypeForPlace(place) {
 function renderPlayerNameWithAwards(name, cumulativeAwards, seasonPlace = null, provisional = false) {
   const totals = cumulativeAwards.get(normalizeName(name)) || { gold: 0, silver: 0, bronze: 0 };
   const seasonStar = seasonPlace
-    ? `<span class="season-name-star ${awardTypeForPlace(seasonPlace)} ${provisional ? "provisional" : ""}" title="${seasonPlace}${seasonPlace === 1 ? "er" : "e"} de ${escapeHtml(formatMonthLabel(selectedStatsMonth))}${provisional ? " · provisoire" : ""}">★</span>`
+    ? renderAwardStar(awardTypeForPlace(seasonPlace), `season-name-star ${provisional ? "provisional" : ""}`, `${seasonPlace}${seasonPlace === 1 ? "er" : "e"} de ${formatMonthLabel(selectedStatsMonth)}${provisional ? " · provisoire" : ""}`)
     : "";
   return `<span class="player-name-with-awards">${seasonStar}<span>${escapeHtml(name)}</span>${renderAwardTotals(totals)}</span>`;
 }
@@ -1581,7 +1587,7 @@ function renderAwardTotals(totals) {
     ["bronze", totals.bronze]
   ].filter(([, count]) => count > 0);
   if (!badges.length) return "";
-  return `<span class="award-totals" aria-label="Étoiles cumulées">${badges.map(([type, count]) => `<span class="award-count ${type}" title="${count} étoile(s) ${type === "gold" ? "d’or" : type === "silver" ? "d’argent" : "de bronze"}">★${count}</span>`).join("")}</span>`;
+  return `<span class="award-totals" aria-label="Étoiles cumulées">${badges.map(([type, count]) => `<span class="award-count award-${type}" title="${count} étoile(s) ${type === "gold" ? "d’or" : type === "silver" ? "d’argent" : "de bronze"}">${renderAwardStar(type, "award-count-icon")}<span>${count}</span></span>`).join("")}</span>`;
 }
 
 function renderRanking(container, rows, mapRow, options = {}) {
