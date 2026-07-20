@@ -3,6 +3,9 @@
 // Important : utilise la clé "anon public", jamais la clé "service_role".
 
 window.BABYFOOT_CONFIG = {
-  url: "https://pkuvxtjlqzdkpmjgflhf.supabase.co",
-  anonKey: "sb_publishable_isszt1765McxiFEj2sGP0A_2_YNzgxi"
+  url: "https://pkuvxtjlqzdkpmjgfthf.supabase.co",
+  anonKey: "sb_publishable_isszt1765McxiFEj2sGP0A_2_YNzgxi",
+  // Protection légère côté navigateur pour afficher les boutons de suppression.
+  // Modifie ce code avant publication.
+  adminPin: "7391"
 };
