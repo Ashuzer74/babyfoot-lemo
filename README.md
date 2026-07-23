@@ -1,4 +1,4 @@
-# BabyFoot LEMO
+# BabyFoot LEMO — version 3.3
 
 Site statique pour Teams/GitHub Pages avec sauvegarde partagée dans Supabase.
 
@@ -20,7 +20,8 @@ Site statique pour Teams/GitHub Pages avec sauvegarde partagée dans Supabase.
 - Elo remis à 1000 au début de chaque mois.
 - Aucun changement d’Elo pour un joueur qui ne joue pas.
 - Minimum de 5 matchs mensuels pour apparaître au classement Elo.
-- Une étoile est attribuée au premier du classement Elo lorsque le mois est terminé.
+- À la fin du mois, une étoile d’or est attribuée au 1er, une étoile d’argent au 2e et une étoile de bronze au 3e.
+- Les étoiles restent affichées sur le nom des joueurs et se cumulent automatiquement au fil des saisons terminées.
 - Les autres statistiques sont également calculées uniquement sur le mois sélectionné.
 
 ### Elo
@@ -40,13 +41,15 @@ Site statique pour Teams/GitHub Pages avec sauvegarde partagée dans Supabase.
 - Correction du tableau à élimination directe : les tours suivants sont préparés et les vainqueurs avancent automatiquement.
 - Les BYE sont distribués sans créer de match vide bloquant.
 - Les championnats peuvent continuer sur plusieurs jours et les résultats des mois précédents deviennent figés.
+- En mode administrateur, les résultats de tournoi et de championnat du mois en cours peuvent être supprimés depuis le tableau ou l’historique.
+- La suppression d’un résultat de tournoi réinitialise les tours suivants qui en dépendent ; la suppression d’un résultat de championnat remet le match à jouer.
 
 ## Configuration
 
 Dans `config.js` :
 
 - `url` : URL du projet Supabase.
-- `anonKey` : Publishable key, jamais une Secret key.
+- `publishableKey` : Publishable key, jamais une Secret key.
 - `adminPin` : code utilisé pour activer les boutons de suppression dans les archives.
 
 Le code administrateur est une protection légère côté navigateur. Il est visible dans les fichiers du site et ne remplace pas une authentification Supabase sécurisée.
@@ -68,3 +71,19 @@ Dans GitHub : **Settings > Pages > Deploy from a branch > main > /root**.
 ## Supabase
 
 La structure SQL ne change pas : toutes les nouvelles propriétés sont enregistrées dans le champ JSON `data` de la ligne `id = main`. Une installation existante reste compatible sans recréer la table.
+
+
+## Connexion Supabase
+
+Cette version utilise directement l’API REST Supabase et ne dépend plus du CDN `supabase-js`. En cas de coupure réseau, trois tentatives sont effectuées puis la sauvegarde locale du navigateur est affichée sans être supprimée.
+
+
+## Sécurité des clés Supabase
+
+Le navigateur doit utiliser uniquement `publishableKey` dans `config.js`. Une clé `sb_secret_...` ne doit jamais être ajoutée au site ou publiée sur GitHub. Si une clé secrète a été copiée dans un message ou un dépôt, elle doit être révoquée puis recréée dans Supabase > Settings > API Keys.
+
+## Mouvements Elo dans l’historique
+
+- Le « dernier mouvement » du classement correspond maintenant au dernier match joué par le joueur.
+- Lorsque plusieurs matchs ont la même date, l’heure réelle d’enregistrement détermine leur ordre.
+- Chaque résultat affiche le mouvement Elo de tous les joueurs : vainqueurs en vert et perdants en rouge.
