@@ -1,3 +1,4 @@
+const APP_VERSION = "3.5.0";
 const STORAGE_KEY = "lemo_babyfoot_v2_supabase_backup";
 const LEGACY_STORAGE_KEY = "lemo_babyfoot_simplified_v1_backup";
 const SUPABASE_TABLE = "babyfoot_state";
@@ -158,7 +159,8 @@ function normalizeStandardMatch(match) {
     score: { A: scoreA, B: scoreB },
     winner,
     playedAt: match.playedAt || dateOnly(match.createdAt) || todayInputValue(),
-    createdAt: match.createdAt || new Date().toISOString()
+    createdAt: match.createdAt || new Date().toISOString(),
+    updatedAt: match.updatedAt || match.createdAt || new Date().toISOString()
   };
 }
 
@@ -712,7 +714,7 @@ function renderStandardHistory(eloMovementIndex = buildEloMovementIndex()) {
         <div class="history-main">
           <strong>${escapeHtml(winnerTeam)} vainqueur · ${item.mode.toUpperCase()}</strong>
           <small>${escapeHtml(formatTeam(item.teams.A))} vs ${escapeHtml(formatTeam(item.teams.B))} · ${formatScore(item.score)} · ${formatDateOnly(item.playedAt)}</small>
-          ${renderEloMovements("standard", item.id, eloMovementIndex)}
+          ${renderEloMovements("standard", item, eloMovementIndex)}
         </div>
         <div class="history-actions">
           <span class="score-chip">${item.score.A} - ${item.score.B}</span>
@@ -1074,7 +1076,7 @@ function renderTournamentHistory(eloMovementIndex = buildEloMovementIndex()) {
         <div class="history-main">
           <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · ${escapeHtml(item.roundName || "Tournoi")} · ${item.mode.toUpperCase()}</strong>
           <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatDateTime(item.updatedAt || item.createdAt)}</small>
-          ${renderEloMovements("tournament", item.id, eloMovementIndex)}
+          ${renderEloMovements("tournament", item, eloMovementIndex)}
         </div>
         <div class="history-actions">
           <span class="score-chip">Victoire</span>
@@ -1387,7 +1389,7 @@ function renderChampionshipHistory(eloMovementIndex = buildEloMovementIndex()) {
         <div class="history-main">
           <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · Championnat · ${item.mode.toUpperCase()}</strong>
           <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatScore(item.score)} · ${formatDateOnly(item.playedAt)}</small>
-          ${renderEloMovements("championship", item.id, eloMovementIndex)}
+          ${renderEloMovements("championship", item, eloMovementIndex)}
         </div>
         <div class="history-actions">
           <span class="score-chip">${item.score.A} - ${item.score.B}</span>
@@ -1767,6 +1769,7 @@ function buildEloMovementIndex() {
       [...event.teams.A, ...event.teams.B].forEach(ensureRating);
       const movements = applyElo(ratings, event, event.winner);
       movementIndex.set(matchEventKey(event.source, event.id), movements);
+      movementIndex.set(matchEventSignature(event), movements);
     });
   });
 
@@ -1774,21 +1777,72 @@ function buildEloMovementIndex() {
 }
 
 function matchEventKey(source, id) {
-  return `${source || "match"}:${id || ""}`;
+  return `${source || "match"}:id:${String(id || "")}`;
 }
 
-function renderEloMovements(source, id, movementIndex) {
-  const movements = movementIndex?.get(matchEventKey(source, id)) || [];
-  if (!movements.length) return "";
+function matchEventSignature(event) {
+  const normalizeTeam = players => (players || []).map(normalizeName).join("+").toLowerCase();
+  const score = event?.score ? `${parseScore(event.score.A)}-${parseScore(event.score.B)}` : "no-score";
+  return [
+    event?.source || "match",
+    dateOnly(event?.playedAt || event?.updatedAt || event?.createdAt),
+    normalizeTeam(event?.teams?.A),
+    normalizeTeam(event?.teams?.B),
+    score,
+    event?.winner || ""
+  ].join("|");
+}
+
+function archiveItemToEloEvent(source, item) {
+  if (source === "standard") {
+    return {
+      id: item?.id,
+      source,
+      teams: item?.teams || { A: [], B: [] },
+      score: item?.score || null,
+      winner: item?.winner,
+      playedAt: item?.playedAt,
+      createdAt: item?.createdAt,
+      updatedAt: item?.updatedAt || item?.createdAt
+    };
+  }
+
+  return {
+    id: item?.id,
+    source,
+    teams: {
+      A: item?.teamA?.players || [],
+      B: item?.teamB?.players || []
+    },
+    score: source === "championship" ? item?.score || null : null,
+    winner: item?.winner || (samePlayers(item?.winnerTeam?.players || [], item?.teamA?.players || []) ? "A" : "B"),
+    playedAt: source === "tournament" ? dateOnly(item?.updatedAt || item?.createdAt) : item?.playedAt,
+    createdAt: item?.createdAt,
+    updatedAt: item?.updatedAt || item?.createdAt
+  };
+}
+
+function renderEloMovements(source, item, movementIndex) {
+  const event = archiveItemToEloEvent(source, item);
+  const movements = movementIndex?.get(matchEventKey(source, item?.id))
+    || movementIndex?.get(matchEventSignature(event))
+    || [];
+
+  if (!movements.length) {
+    return `<div class="elo-movement-list elo-movement-missing"><span>Mouvements Elo indisponibles pour ce match</span></div>`;
+  }
 
   return `
-    <div class="elo-movement-list" aria-label="Mouvements Elo du match">
-      ${movements.map(movement => `
-        <span class="elo-movement ${movement.winner ? "elo-win" : "elo-loss"}">
-          <strong>${escapeHtml(movement.name)}</strong>
-          <span>${movement.winner ? "vainqueur" : "perdant"}</span>
-          <b>${escapeHtml(formatSigned(movement.delta))} Elo</b>
-        </span>`).join("")}
+    <div class="elo-movement-block" aria-label="Mouvements Elo du match">
+      <small class="elo-movement-title">Mouvements Elo</small>
+      <div class="elo-movement-list">
+        ${movements.map(movement => `
+          <span class="elo-movement ${movement.winner ? "elo-win" : "elo-loss"}">
+            <strong>${escapeHtml(movement.name)}</strong>
+            <span>${movement.winner ? "vainqueur" : "perdant"}</span>
+            <b>${escapeHtml(formatSigned(movement.delta))} Elo</b>
+          </span>`).join("")}
+      </div>
     </div>`;
 }
 
