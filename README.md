@@ -87,3 +87,11 @@ Le navigateur doit utiliser uniquement `publishableKey` dans `config.js`. Une cl
 - Le « dernier mouvement » du classement correspond maintenant au dernier match joué par le joueur.
 - Lorsque plusieurs matchs ont la même date, l’heure réelle d’enregistrement détermine leur ordre.
 - Chaque résultat affiche le mouvement Elo de tous les joueurs : vainqueurs en vert et perdants en rouge.
+
+
+## Version 3.5
+
+- `index.html` charge désormais `app.js?v=3.5.0` et `styles.css?v=3.5.0` afin d’éviter l’ancien cache navigateur.
+- Chaque ligne d’historique possède un bloc visible « Mouvements Elo ».
+- La correspondance utilise l’identifiant du match et une signature de secours (date, équipes, score et vainqueur).
+- Le classement conserve comme dernier mouvement celui du dernier match joué dans la saison.
