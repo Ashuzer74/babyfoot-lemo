@@ -392,6 +392,15 @@ input:focus, select:focus {
 }
 
 .history-main { min-width: 0; }
+.elo-movement-block {
+  margin-top: 10px;
+}
+.elo-movement-title {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 900;
+  color: var(--text);
+}
 .elo-movement-list {
   display: flex;
   flex-wrap: wrap;
@@ -409,6 +418,12 @@ input:focus, select:focus {
   line-height: 1.2;
 }
 .elo-movement strong, .elo-movement b { font-weight: 900; }
+.elo-movement-missing {
+  margin-top: 10px;
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
 .elo-movement.elo-win {
   border: 1px solid rgba(21, 165, 103, 0.25);
   background: rgba(21, 165, 103, 0.11);
