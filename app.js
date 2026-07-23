@@ -462,11 +462,12 @@ function render(options = {}) {
   configureCurrentMonthDateInput();
   renderStandardPreview();
   renderArchiveControls();
-  renderStandardHistory();
+  const eloMovementIndex = buildEloMovementIndex();
+  renderStandardHistory(eloMovementIndex);
   renderTournament();
-  renderTournamentHistory();
+  renderTournamentHistory(eloMovementIndex);
   renderChampionship();
-  renderChampionshipHistory();
+  renderChampionshipHistory(eloMovementIndex);
   renderStatsSeasonTabs();
   renderStats();
   if (!options.skipSave) saveState();
@@ -691,10 +692,10 @@ function renderArchiveControls() {
   archiveUiMessage = "";
 }
 
-function renderStandardHistory() {
+function renderStandardHistory(eloMovementIndex = buildEloMovementIndex()) {
   const rows = state.standardHistory
     .filter(item => monthKeyFromValue(item.playedAt || item.createdAt) === selectedArchiveMonth)
-    .sort((a, b) => eventTimestamp(b) - eventTimestamp(a));
+    .sort((a, b) => compareMatchEvents(b, a));
 
   if (!rows.length) {
     el.standardHistoryList.className = "history-list empty-state";
@@ -708,9 +709,10 @@ function renderStandardHistory() {
     const winnerTeam = formatTeam(item.teams[item.winner]);
     return `
       <article class="history-row">
-        <div>
+        <div class="history-main">
           <strong>${escapeHtml(winnerTeam)} vainqueur · ${item.mode.toUpperCase()}</strong>
           <small>${escapeHtml(formatTeam(item.teams.A))} vs ${escapeHtml(formatTeam(item.teams.B))} · ${formatScore(item.score)} · ${formatDateOnly(item.playedAt)}</small>
+          ${renderEloMovements("standard", item.id, eloMovementIndex)}
         </div>
         <div class="history-actions">
           <span class="score-chip">${item.score.A} - ${item.score.B}</span>
@@ -1053,8 +1055,11 @@ function getTournamentChampion(tournament) {
   return finalMatch.winner ? finalMatch[finalMatch.winner] : null;
 }
 
-function renderTournamentHistory() {
-  const rows = state.tournamentArchive.slice().sort((a, b) => eventTimestamp({ createdAt: b.updatedAt || b.createdAt }) - eventTimestamp({ createdAt: a.updatedAt || a.createdAt }));
+function renderTournamentHistory(eloMovementIndex = buildEloMovementIndex()) {
+  const rows = state.tournamentArchive.slice().sort((a, b) => compareMatchEvents(
+    { playedAt: dateOnly(b.updatedAt || b.createdAt), createdAt: b.createdAt, updatedAt: b.updatedAt, id: b.id },
+    { playedAt: dateOnly(a.updatedAt || a.createdAt), createdAt: a.createdAt, updatedAt: a.updatedAt, id: a.id }
+  ));
   if (!rows.length) {
     el.tournamentHistoryList.className = "history-list empty-state";
     el.tournamentHistoryList.textContent = "Aucun résultat de tournoi enregistré.";
@@ -1066,9 +1071,10 @@ function renderTournamentHistory() {
     const canDelete = adminUnlocked && !isFrozenMonth(monthKeyFromValue(item.updatedAt || item.createdAt));
     return `
       <article class="history-row">
-        <div>
+        <div class="history-main">
           <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · ${escapeHtml(item.roundName || "Tournoi")} · ${item.mode.toUpperCase()}</strong>
           <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatDateTime(item.updatedAt || item.createdAt)}</small>
+          ${renderEloMovements("tournament", item.id, eloMovementIndex)}
         </div>
         <div class="history-actions">
           <span class="score-chip">Victoire</span>
@@ -1365,8 +1371,8 @@ function buildChampionshipStandings(championship) {
     .sort(sortPointRows);
 }
 
-function renderChampionshipHistory() {
-  const rows = state.championshipArchive.slice().sort((a, b) => eventTimestamp(b) - eventTimestamp(a));
+function renderChampionshipHistory(eloMovementIndex = buildEloMovementIndex()) {
+  const rows = state.championshipArchive.slice().sort((a, b) => compareMatchEvents(b, a));
   if (!rows.length) {
     el.championshipHistoryList.className = "history-list empty-state";
     el.championshipHistoryList.textContent = "Aucun résultat de championnat enregistré.";
@@ -1378,9 +1384,10 @@ function renderChampionshipHistory() {
     const canDelete = adminUnlocked && !isFrozenMonth(monthKeyFromValue(item.playedAt || item.createdAt));
     return `
       <article class="history-row">
-        <div>
+        <div class="history-main">
           <strong>${escapeHtml(formatTeam(item.winnerTeam.players))} vainqueur · Championnat · ${item.mode.toUpperCase()}</strong>
           <small>${escapeHtml(formatTeam(item.teamA.players))} vs ${escapeHtml(formatTeam(item.teamB.players))} · ${formatScore(item.score)} · ${formatDateOnly(item.playedAt)}</small>
+          ${renderEloMovements("championship", item.id, eloMovementIndex)}
         </div>
         <div class="history-actions">
           <span class="score-chip">${item.score.A} - ${item.score.B}</span>
@@ -1474,7 +1481,7 @@ function renderStats() {
   }
 
   renderRanking(el.eloRanking, eligibleEloRows, row => ({
-    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
+    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards, seasonPlaces.get(normalizeName(row.name)), !closedSeason),
     detail: `${row.played} match(s) · ${row.wins} victoire(s) · dernier mouvement ${formatSignedDecimal(row.lastEloDelta || 0)}`,
     value: Math.round(row.elo)
   }), { podium: true });
@@ -1526,12 +1533,6 @@ function buildCumulativeSeasonAwards() {
   return awards;
 }
 
-function renderAwardStar(type, className = "award-star", label = "") {
-  const safeType = ["gold", "silver", "bronze"].includes(type) ? type : "bronze";
-  const aria = label ? ` role="img" aria-label="${escapeHtml(label)}"` : ' aria-hidden="true"';
-  return `<span class="${className} award-${safeType}"${aria}><svg viewBox="0 0 24 24" focusable="false"><path d="M12 1.8l3.09 6.26 6.91 1-5 4.87 1.18 6.88L12 17.56 5.82 20.81 7 13.93 2 9.06l6.91-1L12 1.8z"></path></svg></span>`;
-}
-
 function renderSeasonPodium(eligibleRows, closedSeason, cumulativeAwards) {
   if (!el.seasonChampion) return;
   const podium = eligibleRows.slice(0, 3);
@@ -1557,7 +1558,7 @@ function renderSeasonPodium(eligibleRows, closedSeason, cumulativeAwards) {
         const type = awardTypeForPlace(place);
         return `
           <article class="podium-place podium-${type}">
-            ${renderAwardStar(type, `award-star ${closedSeason ? "" : "provisional"}`, `${place}${place === 1 ? "er" : "e"} du classement ${closedSeason ? "final" : "provisoire"}`)}
+            <span class="award-star ${type} ${closedSeason ? "" : "provisional"}" title="${closedSeason ? "Classement final" : "Classement provisoire"}">★</span>
             <div>
               <small>${place}${place === 1 ? "er" : "e"} place</small>
               <strong>${renderPlayerNameWithAwards(row.name, cumulativeAwards)}</strong>
@@ -1572,44 +1573,22 @@ function awardTypeForPlace(place) {
   return place === 1 ? "gold" : place === 2 ? "silver" : "bronze";
 }
 
-function renderPlayerNameWithAwards(name, cumulativeAwards) {
-  const totals = cumulativeAwards.get(normalizeName(name)) || {
-    gold: 0,
-    silver: 0,
-    bronze: 0
-  };
-
-  return `
-    <span class="player-name-with-awards">
-      <span class="player-award-name">${escapeHtml(name)}</span>
-      ${renderAwardTotals(totals)}
-    </span>
-  `;
+function renderPlayerNameWithAwards(name, cumulativeAwards, seasonPlace = null, provisional = false) {
+  const totals = cumulativeAwards.get(normalizeName(name)) || { gold: 0, silver: 0, bronze: 0 };
+  const seasonStar = seasonPlace
+    ? `<span class="season-name-star ${awardTypeForPlace(seasonPlace)} ${provisional ? "provisional" : ""}" title="${seasonPlace}${seasonPlace === 1 ? "er" : "e"} de ${escapeHtml(formatMonthLabel(selectedStatsMonth))}${provisional ? " · provisoire" : ""}">★</span>`
+    : "";
+  return `<span class="player-name-with-awards">${seasonStar}<span>${escapeHtml(name)}</span>${renderAwardTotals(totals)}</span>`;
 }
 
 function renderAwardTotals(totals) {
-  const awards = [
-    { type: "gold", count: totals.gold, label: "d’or" },
-    { type: "silver", count: totals.silver, label: "d’argent" },
-    { type: "bronze", count: totals.bronze, label: "de bronze" }
-  ].filter(award => award.count > 0);
-
-  if (!awards.length) return "";
-
-  return `
-    <span class="award-totals" aria-label="Récompenses cumulées">
-      ${awards.map(award => `
-        <span
-          class="award-inline award-${award.type}"
-          title="${award.count} étoile(s) ${award.label}"
-          aria-label="${award.count} étoile(s) ${award.label}"
-        >
-          <span class="award-number">${award.count}</span>
-          ${renderAwardStar(award.type, "award-inline-star")}
-        </span>
-      `).join("")}
-    </span>
-  `;
+  const badges = [
+    ["gold", totals.gold],
+    ["silver", totals.silver],
+    ["bronze", totals.bronze]
+  ].filter(([, count]) => count > 0);
+  if (!badges.length) return "";
+  return `<span class="award-totals" aria-label="Étoiles cumulées">${badges.map(([type, count]) => `<span class="award-count ${type}" title="${count} étoile(s) ${type === "gold" ? "d’or" : type === "silver" ? "d’argent" : "de bronze"}">★${count}</span>`).join("")}</span>`;
 }
 
 function renderRanking(container, rows, mapRow, options = {}) {
@@ -1699,7 +1678,7 @@ function buildPlayerStats(monthKey = selectedStatsMonth) {
   };
 
   state.players.forEach(ensure);
-  const events = getAllMatchEvents(monthKey).sort((a, b) => eventTimestamp(a) - eventTimestamp(b));
+  const events = getAllMatchEvents(monthKey).sort(compareMatchEvents);
 
   events.forEach(event => {
     const teamA = event.teams.A;
@@ -1739,7 +1718,7 @@ function applyTeamResult(row, event, side, winnerSide) {
 function applyElo(stats, event, winnerSide) {
   const teamA = event.teams.A.map(player => stats.get(normalizeName(player))).filter(Boolean);
   const teamB = event.teams.B.map(player => stats.get(normalizeName(player))).filter(Boolean);
-  if (!teamA.length || !teamB.length) return;
+  if (!teamA.length || !teamB.length) return [];
 
   const ratingA = average(teamA.map(row => row.elo));
   const ratingB = average(teamB.map(row => row.elo));
@@ -1748,15 +1727,69 @@ function applyElo(stats, event, winnerSide) {
   const teamDeltaA = ELO_K_FACTOR * (resultA - expectedA);
   const playerDeltaA = teamDeltaA / teamA.length;
   const playerDeltaB = -teamDeltaA / teamB.length;
+  const movements = [];
 
   teamA.forEach(row => {
     row.elo += playerDeltaA;
     row.lastEloDelta = playerDeltaA;
+    movements.push({ name: row.name, side: "A", winner: winnerSide === "A", delta: playerDeltaA });
   });
   teamB.forEach(row => {
     row.elo += playerDeltaB;
     row.lastEloDelta = playerDeltaB;
+    movements.push({ name: row.name, side: "B", winner: winnerSide === "B", delta: playerDeltaB });
   });
+
+  return movements.sort((a, b) => Number(b.winner) - Number(a.winner));
+}
+
+function buildEloMovementIndex() {
+  const movementIndex = new Map();
+  const eventsByMonth = new Map();
+
+  getAllMatchEvents().forEach(event => {
+    const month = monthKeyFromValue(event.playedAt || event.createdAt);
+    if (!month) return;
+    if (!eventsByMonth.has(month)) eventsByMonth.set(month, []);
+    eventsByMonth.get(month).push(event);
+  });
+
+  eventsByMonth.forEach(events => {
+    const ratings = new Map();
+    const ensureRating = name => {
+      const clean = normalizeName(name);
+      if (!clean) return null;
+      if (!ratings.has(clean)) ratings.set(clean, { name: clean, elo: BASE_ELO, lastEloDelta: 0 });
+      return ratings.get(clean);
+    };
+
+    events.sort(compareMatchEvents).forEach(event => {
+      [...event.teams.A, ...event.teams.B].forEach(ensureRating);
+      const movements = applyElo(ratings, event, event.winner);
+      movementIndex.set(matchEventKey(event.source, event.id), movements);
+    });
+  });
+
+  return movementIndex;
+}
+
+function matchEventKey(source, id) {
+  return `${source || "match"}:${id || ""}`;
+}
+
+function renderEloMovements(source, id, movementIndex) {
+  const movements = movementIndex?.get(matchEventKey(source, id)) || [];
+  if (!movements.length) return "";
+
+  return `
+    <div class="elo-movement-list" aria-label="Mouvements Elo du match">
+      ${movements.map(movement => `
+        <span class="elo-movement ${movement.winner ? "elo-win" : "elo-loss"}">
+          <strong>${escapeHtml(movement.name)}</strong>
+          <span>${movement.winner ? "vainqueur" : "perdant"}</span>
+          <b>${escapeHtml(formatSigned(movement.delta))} Elo</b>
+        </span>`).join("")}
+    </div>`;
 }
 
 function getAllMatchEvents(monthKey = null) {
@@ -1772,7 +1805,8 @@ function getAllMatchEvents(monthKey = null) {
       score: match.score,
       winner: match.winner,
       playedAt: match.playedAt,
-      createdAt: match.createdAt
+      createdAt: match.createdAt,
+      updatedAt: match.updatedAt || match.createdAt
     });
   });
 
@@ -1786,7 +1820,8 @@ function getAllMatchEvents(monthKey = null) {
       score: match.score,
       winner: match.winner,
       playedAt: match.playedAt,
-      createdAt: match.createdAt
+      createdAt: match.createdAt,
+      updatedAt: match.updatedAt || match.createdAt
     });
   });
 
@@ -1800,7 +1835,8 @@ function getAllMatchEvents(monthKey = null) {
       score: null,
       winner: match.winner || (samePlayers(match.winnerTeam.players, match.teamA.players) ? "A" : "B"),
       playedAt: dateOnly(match.updatedAt || match.createdAt),
-      createdAt: match.updatedAt || match.createdAt
+      createdAt: match.createdAt,
+      updatedAt: match.updatedAt || match.createdAt
     });
   });
 
@@ -1962,9 +1998,21 @@ function dateOnly(value) {
   return date.toISOString().slice(0, 10);
 }
 
-function eventTimestamp(event) {
-  const raw = event.playedAt ? `${event.playedAt}T12:00:00` : event.createdAt;
-  const date = new Date(raw || 0);
+function compareMatchEvents(left, right) {
+  const leftDay = dateOnly(left?.playedAt || left?.updatedAt || left?.createdAt);
+  const rightDay = dateOnly(right?.playedAt || right?.updatedAt || right?.createdAt);
+  const dayComparison = leftDay.localeCompare(rightDay);
+  if (dayComparison !== 0) return dayComparison;
+
+  const leftRecordedAt = recordedEventTimestamp(left);
+  const rightRecordedAt = recordedEventTimestamp(right);
+  if (leftRecordedAt !== rightRecordedAt) return leftRecordedAt - rightRecordedAt;
+
+  return String(left?.id || "").localeCompare(String(right?.id || ""));
+}
+
+function recordedEventTimestamp(event) {
+  const date = new Date(event?.updatedAt || event?.createdAt || event?.playedAt || 0);
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
