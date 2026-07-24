@@ -1484,7 +1484,7 @@ function renderStats() {
 
   renderRanking(el.eloRanking, eligibleEloRows, row => ({
     titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards, seasonPlaces.get(normalizeName(row.name)), !closedSeason),
-    detail: `${row.played} match(s) · ${row.wins} victoire(s) · dernier mouvement ${formatSignedDecimal(row.lastEloDelta || 0)}`,
+    detail: `${row.played} match(s) · ${row.wins} victoire(s)`,
     value: Math.round(row.elo)
   }), { podium: true });
 
