@@ -29,7 +29,7 @@
       </p>
 
       <p class="hero-joke">
-        ANGEL A MARQUE 3 BUT DU GENOU !
+        Ici, les frappes sales, les murs humains et les joueurs qui parlent trop finissent tous au même endroit : dans les stats.
       </p>
 
       <div class="hero-tags">
@@ -102,7 +102,19 @@
                 <select id="teamA2" class="standard-team-a-second hidden" aria-label="Équipe A joueur 2"></select>
                 <label class="score-final-label">
                   Score final A
-                  <input id="standardScoreA" type="number" min="0" step="1" value="0" inputmode="numeric" />
+                  <select id="standardScoreA" aria-label="Score final de l’équipe A">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                  </select>
                 </label>
               </div>
 
@@ -115,7 +127,19 @@
                 <select id="teamB2" class="standard-team-b-second hidden" aria-label="Équipe B joueur 2"></select>
                 <label class="score-final-label">
                   Score final B
-                  <input id="standardScoreB" type="number" min="0" step="1" value="0" inputmode="numeric" />
+                  <select id="standardScoreB" aria-label="Score final de l’équipe B">
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                  </select>
                 </label>
               </div>
             </div>
@@ -135,6 +159,15 @@
                 <label>
                   Mois consulté
                   <select id="archiveMonthFilter" aria-label="Filtrer les archives par mois"></select>
+                </label>
+                <label>
+                  Trier l’historique
+                  <select id="historySortFilter" aria-label="Trier l’historique des matchs">
+                    <option value="date-desc">Date · plus récent</option>
+                    <option value="date-asc">Date · plus ancien</option>
+                    <option value="score-gap">Écart de score · plus grand</option>
+                    <option value="elo-steal">Vol d’Elo · plus grand</option>
+                  </select>
                 </label>
                 <button class="ghost-button" id="adminModeBtn" type="button">Activer le mode admin</button>
               </div>
@@ -320,14 +353,40 @@
             <div id="goalsAgainstRanking" class="leaderboard empty-state">Aucun score enregistré.</div>
           </section>
 
-          <section class="panel section stat-card">
+          <section class="panel section stat-card fun-stats-section">
             <div class="section-title compact-title">
               <div>
-                <p class="eyebrow">Synthèse</p>
+                <p class="eyebrow">Records et casseroles</p>
                 <h2>Autres stats</h2>
               </div>
             </div>
             <div id="extraStats" class="summary-grid empty-state">Aucune statistique disponible.</div>
+
+            <div class="fun-stats-grid">
+              <section class="fun-stat-block">
+                <h3>Booster de coéquipiers · 2v2</h3>
+                <p>Celui qui fait gagner le plus d’Elo à ses partenaires.</p>
+                <div id="teammateEloGainRanking" class="leaderboard empty-state">Aucun match 2v2 enregistré.</div>
+              </section>
+
+              <section class="fun-stat-block">
+                <h3>Aspirateur d’Elo · 2v2</h3>
+                <p>Celui qui fait perdre le plus d’Elo à ses partenaires.</p>
+                <div id="teammateEloLossRanking" class="leaderboard empty-state">Aucun match 2v2 enregistré.</div>
+              </section>
+
+              <section class="fun-stat-block">
+                <h3>Distributeurs de 10–0</h3>
+                <p>Classement des joueurs qui ont infligé des 10–0, avec leurs victimes.</p>
+                <div id="shutoutWinnersRanking" class="leaderboard empty-state">Aucun 10–0 enregistré.</div>
+              </section>
+
+              <section class="fun-stat-block">
+                <h3>Collectionneurs de 0–10</h3>
+                <p>Classement des joueurs qui ont subi des 10–0, avec leurs bourreaux.</p>
+                <div id="shutoutLosersRanking" class="leaderboard empty-state">Aucun 0–10 enregistré.</div>
+              </section>
+            </div>
           </section>
         </div>
       </section>
@@ -335,6 +394,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=3.5.0"></script>
+  <script src="app.js?v=3.6.0"></script>
 </body>
 </html>
