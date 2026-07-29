@@ -1,4 +1,4 @@
-const APP_VERSION = "3.5.0";
+const APP_VERSION = "3.6.0";
 const STORAGE_KEY = "lemo_babyfoot_v2_supabase_backup";
 const LEGACY_STORAGE_KEY = "lemo_babyfoot_simplified_v1_backup";
 const SUPABASE_TABLE = "babyfoot_state";
@@ -17,6 +17,7 @@ let isSaving = false;
 let lastRemoteUpdatedAt = null;
 let selectedArchiveMonth = currentMonthKey();
 let selectedStatsMonth = currentMonthKey();
+let selectedHistorySort = "date-desc";
 let adminUnlocked = sessionStorage.getItem(ADMIN_SESSION_KEY) === "1";
 let archiveUiMessage = "";
 
@@ -69,6 +70,7 @@ const el = {
   standardScoreB: document.getElementById("standardScoreB"),
   standardHistoryList: document.getElementById("standardHistoryList"),
   archiveMonthFilter: document.getElementById("archiveMonthFilter"),
+  historySortFilter: document.getElementById("historySortFilter"),
   adminModeBtn: document.getElementById("adminModeBtn"),
   archiveFreezeNote: document.getElementById("archiveFreezeNote"),
   competitionAdminModeBtn: document.getElementById("competitionAdminModeBtn"),
@@ -94,7 +96,11 @@ const el = {
   winRateRanking: document.getElementById("winRateRanking"),
   goalsForRanking: document.getElementById("goalsForRanking"),
   goalsAgainstRanking: document.getElementById("goalsAgainstRanking"),
-  extraStats: document.getElementById("extraStats")
+  extraStats: document.getElementById("extraStats"),
+  teammateEloGainRanking: document.getElementById("teammateEloGainRanking"),
+  teammateEloLossRanking: document.getElementById("teammateEloLossRanking"),
+  shutoutWinnersRanking: document.getElementById("shutoutWinnersRanking"),
+  shutoutLosersRanking: document.getElementById("shutoutLosersRanking")
 };
 
 const teamSelects = [el.teamA1, el.teamA2, el.teamB1, el.teamB2];
@@ -471,7 +477,7 @@ function render(options = {}) {
   renderChampionship();
   renderChampionshipHistory(eloMovementIndex);
   renderStatsSeasonTabs();
-  renderStats();
+  renderStats(eloMovementIndex);
   if (!options.skipSave) saveState();
 }
 
@@ -631,6 +637,7 @@ function validateStandardMatch(teams, scoreA, scoreB) {
     return "Un joueur ne peut pas être dans deux équipes.";
   }
 
+  if (scoreA > 10 || scoreB > 10) return "Le score doit être compris entre 0 et 10.";
   if (scoreA === scoreB) return "Le score ne peut pas être égal. Il faut un gagnant.";
   const matchDate = el.standardMatchDate.value || todayInputValue();
   if (monthKeyFromValue(matchDate) !== currentMonthKey()) return "Les mois précédents sont figés. Enregistre le match dans le mois en cours.";
@@ -675,6 +682,8 @@ function renderArchiveControls() {
     el.archiveMonthFilter.value = selectedArchiveMonth;
   }
 
+  if (el.historySortFilter) el.historySortFilter.value = selectedHistorySort;
+
   const adminLabel = adminUnlocked ? "Quitter le mode admin" : "Activer le mode admin";
   if (el.adminModeBtn) el.adminModeBtn.textContent = adminLabel;
   if (el.competitionAdminModeBtn) el.competitionAdminModeBtn.textContent = adminLabel;
@@ -697,7 +706,7 @@ function renderArchiveControls() {
 function renderStandardHistory(eloMovementIndex = buildEloMovementIndex()) {
   const rows = state.standardHistory
     .filter(item => monthKeyFromValue(item.playedAt || item.createdAt) === selectedArchiveMonth)
-    .sort((a, b) => compareMatchEvents(b, a));
+    .sort((a, b) => compareStandardHistoryRows(a, b, eloMovementIndex));
 
   if (!rows.length) {
     el.standardHistoryList.className = "history-list empty-state";
@@ -709,6 +718,7 @@ function renderStandardHistory(eloMovementIndex = buildEloMovementIndex()) {
   el.standardHistoryList.className = "history-list";
   el.standardHistoryList.innerHTML = rows.map(item => {
     const winnerTeam = formatTeam(item.teams[item.winner]);
+    const eloSteal = getEloStealValue("standard", item, eloMovementIndex);
     return `
       <article class="history-row">
         <div class="history-main">
@@ -718,6 +728,7 @@ function renderStandardHistory(eloMovementIndex = buildEloMovementIndex()) {
         </div>
         <div class="history-actions">
           <span class="score-chip">${item.score.A} - ${item.score.B}</span>
+          <span class="elo-steal-chip" title="Total Elo gagné par l’équipe victorieuse">Vol ${escapeHtml(formatSignedDecimal(eloSteal))} Elo</span>
           ${canDelete ? `<button type="button" class="delete-match-button" data-delete-standard-match="${item.id}">Supprimer</button>` : ""}
         </div>
       </article>`;
@@ -726,6 +737,37 @@ function renderStandardHistory(eloMovementIndex = buildEloMovementIndex()) {
   el.standardHistoryList.querySelectorAll("[data-delete-standard-match]").forEach(button => {
     button.addEventListener("click", () => deleteStandardMatch(button.dataset.deleteStandardMatch));
   });
+}
+
+
+function compareStandardHistoryRows(a, b, eloMovementIndex) {
+  if (selectedHistorySort === "date-asc") return compareMatchEvents(a, b);
+  if (selectedHistorySort === "score-gap") {
+    const gapDifference = scoreGap(b.score) - scoreGap(a.score);
+    return gapDifference || compareMatchEvents(b, a);
+  }
+  if (selectedHistorySort === "elo-steal") {
+    const stealDifference = getEloStealValue("standard", b, eloMovementIndex) - getEloStealValue("standard", a, eloMovementIndex);
+    return stealDifference || scoreGap(b.score) - scoreGap(a.score) || compareMatchEvents(b, a);
+  }
+  return compareMatchEvents(b, a);
+}
+
+function scoreGap(score) {
+  return Math.abs(parseScore(score?.A) - parseScore(score?.B));
+}
+
+function getEloMovementsForItem(source, item, movementIndex = buildEloMovementIndex()) {
+  const event = archiveItemToEloEvent(source, item);
+  return movementIndex?.get(matchEventKey(source, item?.id))
+    || movementIndex?.get(matchEventSignature(event))
+    || [];
+}
+
+function getEloStealValue(source, item, movementIndex = buildEloMovementIndex()) {
+  return getEloMovementsForItem(source, item, movementIndex)
+    .filter(movement => movement.winner && movement.delta > 0)
+    .reduce((sum, movement) => sum + movement.delta, 0);
 }
 
 function toggleAdminMode() {
@@ -1245,18 +1287,30 @@ function renderChampionshipMatch(match) {
       </label>
       <label>
         Score A
-        <input type="number" min="0" step="1" value="${escapeHtml(scoreA)}" inputmode="numeric" data-champ-score-a="${match.id}" ${disabled} />
+        <select data-champ-score-a="${match.id}" ${disabled} aria-label="Score de l’équipe A">
+          ${renderScoreOptions(scoreA)}
+        </select>
       </label>
       <span class="vs-text">-</span>
       <label>
         Score B
-        <input type="number" min="0" step="1" value="${escapeHtml(scoreB)}" inputmode="numeric" data-champ-score-b="${match.id}" ${disabled} />
+        <select data-champ-score-b="${match.id}" ${disabled} aria-label="Score de l’équipe B">
+          ${renderScoreOptions(scoreB)}
+        </select>
       </label>
       <div class="competition-match-actions">
         <button class="save-mini-button" type="button" data-champ-save="${match.id}" ${disabled}>${frozen ? "Figé" : "Enregistrer"}</button>
         ${canDelete ? `<button class="delete-match-button" type="button" data-delete-championship-result="${archiveItem.id}">Supprimer</button>` : ""}
       </div>
     </article>`;
+}
+
+
+function renderScoreOptions(selectedValue) {
+  const selectedScore = Math.min(10, parseScore(selectedValue));
+  return Array.from({ length: 11 }, (_, score) =>
+    `<option value="${score}" ${score === selectedScore ? "selected" : ""}>${score}</option>`
+  ).join("");
 }
 
 function saveChampionshipMatch(matchId) {
@@ -1283,6 +1337,10 @@ function saveChampionshipMatch(matchId) {
   }
   if (playedAt > todayInputValue()) {
     setChampionshipMessage("La date du match ne peut pas être dans le futur.");
+    return;
+  }
+  if (scoreA > 10 || scoreB > 10) {
+    setChampionshipMessage("Le score doit être compris entre 0 et 10.");
     return;
   }
   if (scoreA === scoreB) {
@@ -1384,6 +1442,7 @@ function renderChampionshipHistory(eloMovementIndex = buildEloMovementIndex()) {
   el.championshipHistoryList.className = "history-list";
   el.championshipHistoryList.innerHTML = rows.map(item => {
     const canDelete = adminUnlocked && !isFrozenMonth(monthKeyFromValue(item.playedAt || item.createdAt));
+    const eloSteal = getEloStealValue("championship", item, eloMovementIndex);
     return `
       <article class="history-row">
         <div class="history-main">
@@ -1393,6 +1452,7 @@ function renderChampionshipHistory(eloMovementIndex = buildEloMovementIndex()) {
         </div>
         <div class="history-actions">
           <span class="score-chip">${item.score.A} - ${item.score.B}</span>
+          <span class="elo-steal-chip" title="Total Elo gagné par l’équipe victorieuse">Vol ${escapeHtml(formatSignedDecimal(eloSteal))} Elo</span>
           ${canDelete ? `<button type="button" class="delete-match-button" data-delete-championship-result="${item.id}">Supprimer</button>` : ""}
         </div>
       </article>`;
@@ -1461,7 +1521,7 @@ function renderStatsSeasonTabs() {
   }
 }
 
-function renderStats() {
+function renderStats(eloMovementIndex = buildEloMovementIndex()) {
   const events = getAllMatchEvents(selectedStatsMonth);
   const rows = buildPlayerStats(selectedStatsMonth);
   const activeRows = rows.filter(row => row.played > 0);
@@ -1484,7 +1544,7 @@ function renderStats() {
 
   renderRanking(el.eloRanking, eligibleEloRows, row => ({
     titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards, seasonPlaces.get(normalizeName(row.name)), !closedSeason),
-    detail: `${row.played} match(s) · ${row.wins} victoire(s)`,
+    detail: `${row.played} match(s) · ${row.wins} victoire(s) · dernier mouvement ${formatSignedDecimal(row.lastEloDelta || 0)}`,
     value: Math.round(row.elo)
   }), { podium: true });
 
@@ -1507,6 +1567,7 @@ function renderStats() {
   }));
 
   renderExtraStats(rows, events, eligibleEloRows);
+  renderFunStats(events, eloMovementIndex, cumulativeAwards);
 }
 
 function getEligibleEloRows(monthKey) {
@@ -1597,9 +1658,9 @@ function renderRanking(container, rows, mapRow, options = {}) {
   if (!container) return;
   if (!rows.length) {
     container.className = "leaderboard empty-state";
-    container.textContent = container.id === "eloRanking"
+    container.textContent = options.emptyMessage || (container.id === "eloRanking"
       ? `Aucun joueur classé : ${MIN_ELO_MATCHES} matchs sont nécessaires.`
-      : container.id.includes("goals") ? "Aucun score enregistré." : "Aucun match enregistré.";
+      : container.id.includes("goals") ? "Aucun score enregistré." : "Aucun match enregistré.");
     return;
   }
 
@@ -1654,6 +1715,155 @@ function renderExtraStats(rows, events, eligibleEloRows) {
         <small>${escapeHtml(card.detail)}</small>
       </div>
     </article>`).join("");
+}
+
+
+function renderFunStats(events, eloMovementIndex, cumulativeAwards) {
+  const teammateImpact = buildTeammateEloImpact(events, eloMovementIndex);
+  const shutouts = buildShutoutStats(events);
+
+  renderRanking(
+    el.teammateEloGainRanking,
+    teammateImpact.filter(row => row.partnerEloGained > 0).sort((a, b) => b.partnerEloGained - a.partnerEloGained || b.winningMatches - a.winningMatches || a.name.localeCompare(b.name)),
+    row => ({
+      titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
+      detail: `${row.winningMatches} victoire(s) 2v2 · partenaires aidés : ${formatNameCounts(row.gainPartners)}`,
+      value: `+${formatDecimal(row.partnerEloGained)} Elo`
+    }),
+    { emptyMessage: "Aucun gain d’Elo de coéquipier en 2v2 pour cette saison." }
+  );
+
+  renderRanking(
+    el.teammateEloLossRanking,
+    teammateImpact.filter(row => row.partnerEloLost > 0).sort((a, b) => b.partnerEloLost - a.partnerEloLost || b.losingMatches - a.losingMatches || a.name.localeCompare(b.name)),
+    row => ({
+      titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
+      detail: `${row.losingMatches} défaite(s) 2v2 · partenaires entraînés : ${formatNameCounts(row.lossPartners)}`,
+      value: `-${formatDecimal(row.partnerEloLost)} Elo`
+    }),
+    { emptyMessage: "Aucune perte d’Elo de coéquipier en 2v2 pour cette saison." }
+  );
+
+  renderRanking(
+    el.shutoutWinnersRanking,
+    shutouts.winners,
+    row => ({
+      titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
+      detail: `Victime(s) : ${formatNameCounts(row.opponents)}`,
+      value: `${row.count} × 10–0`
+    }),
+    { emptyMessage: "Aucun 10–0 infligé pour cette saison." }
+  );
+
+  renderRanking(
+    el.shutoutLosersRanking,
+    shutouts.losers,
+    row => ({
+      titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
+      detail: `Bourreau(x) : ${formatNameCounts(row.opponents)}`,
+      value: `${row.count} × 0–10`
+    }),
+    { emptyMessage: "Aucun 0–10 subi pour cette saison." }
+  );
+}
+
+function buildTeammateEloImpact(events, eloMovementIndex) {
+  const rows = new Map();
+  const ensure = name => {
+    const clean = normalizeName(name);
+    if (!rows.has(clean)) {
+      rows.set(clean, {
+        name: clean,
+        partnerEloGained: 0,
+        partnerEloLost: 0,
+        winningMatches: 0,
+        losingMatches: 0,
+        gainPartners: new Map(),
+        lossPartners: new Map()
+      });
+    }
+    return rows.get(clean);
+  };
+
+  events
+    .filter(event => event.mode === "2v2" && event.teams?.A?.length === 2 && event.teams?.B?.length === 2)
+    .forEach(event => {
+      const movements = eloMovementIndex?.get(matchEventKey(event.source, event.id))
+        || eloMovementIndex?.get(matchEventSignature(event))
+        || [];
+      const movementByName = new Map(movements.map(movement => [normalizeName(movement.name), movement]));
+
+      ["A", "B"].forEach(side => {
+        const team = event.teams[side].map(normalizeName);
+        team.forEach((player, playerIndex) => {
+          const partner = team[playerIndex === 0 ? 1 : 0];
+          const partnerMovement = movementByName.get(partner);
+          if (!partnerMovement) return;
+          const row = ensure(player);
+          if (partnerMovement.delta > 0) {
+            row.partnerEloGained += partnerMovement.delta;
+            row.winningMatches += 1;
+            incrementCount(row.gainPartners, partner);
+          } else if (partnerMovement.delta < 0) {
+            row.partnerEloLost += Math.abs(partnerMovement.delta);
+            row.losingMatches += 1;
+            incrementCount(row.lossPartners, partner);
+          }
+        });
+      });
+    });
+
+  return Array.from(rows.values());
+}
+
+function buildShutoutStats(events) {
+  const winners = new Map();
+  const losers = new Map();
+  const ensure = (map, name) => {
+    const clean = normalizeName(name);
+    if (!map.has(clean)) map.set(clean, { name: clean, count: 0, opponents: new Map() });
+    return map.get(clean);
+  };
+
+  events.filter(event => event.score).forEach(event => {
+    const scoreA = parseScore(event.score.A);
+    const scoreB = parseScore(event.score.B);
+    if (!((scoreA === 10 && scoreB === 0) || (scoreA === 0 && scoreB === 10))) return;
+
+    const winnerSide = scoreA === 10 ? "A" : "B";
+    const loserSide = winnerSide === "A" ? "B" : "A";
+    const winnerTeamLabel = formatTeam(event.teams[winnerSide]);
+    const loserTeamLabel = formatTeam(event.teams[loserSide]);
+
+    event.teams[winnerSide].forEach(player => {
+      const row = ensure(winners, player);
+      row.count += 1;
+      incrementCount(row.opponents, loserTeamLabel);
+    });
+    event.teams[loserSide].forEach(player => {
+      const row = ensure(losers, player);
+      row.count += 1;
+      incrementCount(row.opponents, winnerTeamLabel);
+    });
+  });
+
+  const sortRows = map => Array.from(map.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return { winners: sortRows(winners), losers: sortRows(losers) };
+}
+
+function incrementCount(map, name) {
+  const clean = normalizeName(name);
+  if (!clean) return;
+  map.set(clean, (map.get(clean) || 0) + 1);
+}
+
+function formatNameCounts(counts, limit = 4) {
+  if (!(counts instanceof Map) || !counts.size) return "-";
+  const entries = Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const visible = entries.slice(0, limit).map(([name, count]) => `${name}${count > 1 ? ` ×${count}` : ""}`);
+  if (entries.length > limit) visible.push(`+${entries.length - limit} autre(s)`);
+  return visible.join(", ");
 }
 
 function buildPlayerStats(monthKey = selectedStatsMonth) {
@@ -1823,10 +2033,7 @@ function archiveItemToEloEvent(source, item) {
 }
 
 function renderEloMovements(source, item, movementIndex) {
-  const event = archiveItemToEloEvent(source, item);
-  const movements = movementIndex?.get(matchEventKey(source, item?.id))
-    || movementIndex?.get(matchEventSignature(event))
-    || [];
+  const movements = getEloMovementsForItem(source, item, movementIndex);
 
   if (!movements.length) {
     return `<div class="elo-movement-list elo-movement-missing"><span>Mouvements Elo indisponibles pour ce match</span></div>`;
@@ -2172,6 +2379,11 @@ el.archiveMonthFilter?.addEventListener("change", () => {
   renderStandardHistory();
 });
 
+el.historySortFilter?.addEventListener("change", () => {
+  selectedHistorySort = el.historySortFilter.value || "date-desc";
+  renderStandardHistory();
+});
+
 el.adminModeBtn?.addEventListener("click", toggleAdminMode);
 el.competitionAdminModeBtn?.addEventListener("click", toggleAdminMode);
 
@@ -2182,7 +2394,7 @@ document.querySelectorAll("[data-selection-action]").forEach(button => {
 });
 
 teamSelects.forEach(select => select.addEventListener("change", renderStandardPreview));
-[el.standardScoreA, el.standardScoreB].forEach(input => input.addEventListener("input", renderStandardPreview));
+[el.standardScoreA, el.standardScoreB].forEach(select => select.addEventListener("change", renderStandardPreview));
 el.randomTeamsBtn.addEventListener("click", chooseRandomTeams);
 el.saveStandardMatchBtn.addEventListener("click", saveStandardMatch);
 el.generateTournamentBtn.addEventListener("click", generateTournament);
