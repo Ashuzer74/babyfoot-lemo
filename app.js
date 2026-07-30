@@ -1566,7 +1566,7 @@ function renderStats(eloMovementIndex = buildEloMovementIndex()) {
     value: `${formatDecimal(avgGoalsAgainst(row))}/m`
   }));
 
-  renderExtraStats(rows, events, eligibleEloRows);
+  renderExtraStats(rows, events);
   renderFunStats(events, eloMovementIndex, cumulativeAwards);
 }
 
@@ -1680,7 +1680,7 @@ function renderRanking(container, rows, mapRow, options = {}) {
   }).join("");
 }
 
-function renderExtraStats(rows, events, eligibleEloRows) {
+function renderExtraStats(rows, events) {
   const activeRows = rows.filter(row => row.played > 0);
   const scoredRows = rows.filter(row => row.scoredMatches > 0);
 
@@ -1692,17 +1692,11 @@ function renderExtraStats(rows, events, eligibleEloRows) {
 
   const mostPlayed = activeRows.slice().sort((a, b) => b.played - a.played || a.name.localeCompare(b.name))[0];
   const bestDiff = scoredRows.slice().sort((a, b) => b.goalDiff - a.goalDiff || b.goalsFor - a.goalsFor || a.name.localeCompare(b.name))[0];
-  const bestAttack = scoredRows.slice().sort((a, b) => b.goalsFor - a.goalsFor || a.name.localeCompare(b.name))[0];
-  const bestDefense = scoredRows.slice().sort((a, b) => avgGoalsAgainst(a) - avgGoalsAgainst(b) || a.name.localeCompare(b.name))[0];
-  const leaderElo = eligibleEloRows[0];
   const totalGoals = events.reduce((sum, event) => event.score ? sum + event.score.A + event.score.B : sum, 0);
 
   const cards = [
     { label: "Plus actif", value: mostPlayed?.name || "-", detail: `${mostPlayed?.played || 0} match(s)` },
     { label: "Meilleure différence", value: bestDiff?.name || "-", detail: bestDiff ? `Diff ${formatSigned(bestDiff.goalDiff)}` : "Aucun score" },
-    { label: "Meilleure attaque totale", value: bestAttack?.name || "-", detail: bestAttack ? `${bestAttack.goalsFor} but(s)` : "Aucun score" },
-    { label: "Meilleure défense", value: bestDefense?.name || "-", detail: bestDefense ? `${formatDecimal(avgGoalsAgainst(bestDefense))} but pris/match` : "Aucun score" },
-    { label: "Leader Elo qualifié", value: leaderElo?.name || "-", detail: leaderElo ? `${Math.round(leaderElo.elo)} Elo` : `Minimum ${MIN_ELO_MATCHES} matchs` },
     { label: "Volume mensuel", value: `${events.length} match(s)`, detail: `${totalGoals} but(s) enregistré(s)` }
   ];
 
@@ -1722,26 +1716,33 @@ function renderFunStats(events, eloMovementIndex, cumulativeAwards) {
   const teammateImpact = buildTeammateEloImpact(events, eloMovementIndex);
   const shutouts = buildShutoutStats(events);
 
+  const netBoosters = teammateImpact
+    .filter(row => row.netPartnerElo > 0)
+    .sort((a, b) => b.netPartnerElo - a.netPartnerElo || b.winningMatches - a.winningMatches || a.name.localeCompare(b.name));
+  const netAspirators = teammateImpact
+    .filter(row => row.netPartnerElo < 0)
+    .sort((a, b) => a.netPartnerElo - b.netPartnerElo || b.losingMatches - a.losingMatches || a.name.localeCompare(b.name));
+
   renderRanking(
     el.teammateEloGainRanking,
-    teammateImpact.filter(row => row.partnerEloGained > 0).sort((a, b) => b.partnerEloGained - a.partnerEloGained || b.winningMatches - a.winningMatches || a.name.localeCompare(b.name)),
+    netBoosters,
     row => ({
       titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
-      detail: `${row.winningMatches} victoire(s) 2v2 · partenaires aidés : ${formatNameCounts(row.gainPartners)}`,
-      value: `+${formatDecimal(row.partnerEloGained)} Elo`
+      detail: `Gagne le plus avec : ${formatNameCounts(row.gainPartners, 2)}`,
+      value: `${formatSignedDecimal(row.netPartnerElo)} Elo`
     }),
-    { emptyMessage: "Aucun gain d’Elo de coéquipier en 2v2 pour cette saison." }
+    { emptyMessage: "Aucun impact Elo net positif en 2v2 pour cette saison." }
   );
 
   renderRanking(
     el.teammateEloLossRanking,
-    teammateImpact.filter(row => row.partnerEloLost > 0).sort((a, b) => b.partnerEloLost - a.partnerEloLost || b.losingMatches - a.losingMatches || a.name.localeCompare(b.name)),
+    netAspirators,
     row => ({
       titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
-      detail: `${row.losingMatches} défaite(s) 2v2 · partenaires entraînés : ${formatNameCounts(row.lossPartners)}`,
-      value: `-${formatDecimal(row.partnerEloLost)} Elo`
+      detail: `Perd le plus avec : ${formatNameCounts(row.lossPartners, 2)}`,
+      value: `${formatSignedDecimal(row.netPartnerElo)} Elo`
     }),
-    { emptyMessage: "Aucune perte d’Elo de coéquipier en 2v2 pour cette saison." }
+    { emptyMessage: "Aucun impact Elo net négatif en 2v2 pour cette saison." }
   );
 
   renderRanking(
@@ -1813,7 +1814,10 @@ function buildTeammateEloImpact(events, eloMovementIndex) {
       });
     });
 
-  return Array.from(rows.values());
+  return Array.from(rows.values()).map(row => ({
+    ...row,
+    netPartnerElo: row.partnerEloGained - row.partnerEloLost
+  }));
 }
 
 function buildShutoutStats(events) {
