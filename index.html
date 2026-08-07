@@ -302,7 +302,8 @@
                 <li>Battre une équipe mieux classée rapporte davantage. Une victoire attendue rapporte moins.</li>
                 <li>La variation totale est équilibrée : les points gagnés par une équipe sont retirés à l’autre, puis répartis entre ses joueurs. Cette règle fonctionne aussi en 1v2.</li>
                 <li>L’écart du score ne change pas l’Elo : seule la victoire compte.</li>
-                <li>Il faut au moins <strong>5 matchs dans le mois</strong> pour apparaître au classement Elo.</li>
+                <li>Il faut au moins <strong>5 matchs dans le mois</strong> pour apparaître dans les classements Elo, victoire, buts et autres statistiques individuelles.</li>
+                <li>Le classement du nombre de matchs reste visible dès la première partie afin de suivre la progression vers ce seuil.</li>
                 <li>À la fin de chaque saison, les trois premiers reçoivent une étoile d’or, d’argent ou de bronze. Ces étoiles restent sur leur nom et se cumulent au fil des saisons.</li>
               </ol>
             </div>
@@ -321,6 +322,17 @@
             </div>
             <div id="eloQualificationNote" class="qualification-note"></div>
             <div id="eloRanking" class="leaderboard empty-state">Aucun match enregistré.</div>
+          </section>
+
+
+          <section class="panel section stat-card">
+            <div class="section-title compact-title">
+              <div>
+                <p class="eyebrow">Activité</p>
+                <h2>Nombre de parties jouées</h2>
+              </div>
+            </div>
+            <div id="gamesPlayedRanking" class="leaderboard empty-state">Aucun match enregistré.</div>
           </section>
 
           <section class="panel section stat-card">
@@ -394,6 +406,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=3.7.0"></script>
+  <script src="app.js?v=3.8.0"></script>
 </body>
 </html>

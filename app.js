@@ -1,4 +1,4 @@
-const APP_VERSION = "3.6.0";
+const APP_VERSION = "3.8.0";
 const STORAGE_KEY = "lemo_babyfoot_v2_supabase_backup";
 const LEGACY_STORAGE_KEY = "lemo_babyfoot_simplified_v1_backup";
 const SUPABASE_TABLE = "babyfoot_state";
@@ -7,6 +7,7 @@ const REFRESH_INTERVAL_MS = 15000;
 const BASE_ELO = 1000;
 const ELO_K_FACTOR = 32;
 const MIN_ELO_MATCHES = 5;
+const MIN_STATS_MATCHES = 5;
 const ADMIN_SESSION_KEY = "lemo_babyfoot_admin_unlocked";
 
 const supabaseConfig = window.BABYFOOT_CONFIG || {};
@@ -93,6 +94,7 @@ const el = {
   seasonChampion: document.getElementById("seasonChampion"),
   eloQualificationNote: document.getElementById("eloQualificationNote"),
   eloRanking: document.getElementById("eloRanking"),
+  gamesPlayedRanking: document.getElementById("gamesPlayedRanking"),
   winRateRanking: document.getElementById("winRateRanking"),
   goalsForRanking: document.getElementById("goalsForRanking"),
   goalsAgainstRanking: document.getElementById("goalsAgainstRanking"),
@@ -1525,7 +1527,8 @@ function renderStats(eloMovementIndex = buildEloMovementIndex()) {
   const events = getAllMatchEvents(selectedStatsMonth);
   const rows = buildPlayerStats(selectedStatsMonth);
   const activeRows = rows.filter(row => row.played > 0);
-  const scoredRows = rows.filter(row => row.scoredMatches > 0);
+  const qualifiedRows = rows.filter(row => row.played >= MIN_STATS_MATCHES);
+  const qualifiedScoredRows = qualifiedRows.filter(row => row.scoredMatches > 0);
   const eligibleEloRows = getEligibleEloRows(selectedStatsMonth);
   const closedSeason = isFrozenMonth(selectedStatsMonth);
   const cumulativeAwards = buildCumulativeSeasonAwards();
@@ -1548,26 +1551,33 @@ function renderStats(eloMovementIndex = buildEloMovementIndex()) {
     value: Math.round(row.elo)
   }), { podium: true });
 
-  renderRanking(el.winRateRanking, activeRows.slice().sort((a, b) => winRate(b) - winRate(a) || b.played - a.played || b.points - a.points || a.name.localeCompare(b.name)), row => ({
+  renderRanking(el.gamesPlayedRanking, activeRows.slice().sort((a, b) => b.played - a.played || b.wins - a.wins || a.name.localeCompare(b.name)), row => ({
+    titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
+    detail: `${row.wins} victoire(s) · ${row.losses} défaite(s)${row.played < MIN_STATS_MATCHES ? ` · encore ${MIN_STATS_MATCHES - row.played} avant qualification` : " · qualifié"}`,
+    value: `${row.played} match${row.played > 1 ? "s" : ""}`
+  }));
+
+  renderRanking(el.winRateRanking, qualifiedRows.slice().sort((a, b) => winRate(b) - winRate(a) || b.played - a.played || b.points - a.points || a.name.localeCompare(b.name)), row => ({
     titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
     detail: `${row.wins}/${row.played} victoire(s)`,
     value: `${Math.round(winRate(row))}%`
-  }));
+  }), { emptyMessage: `Aucun joueur n’a encore atteint les ${MIN_STATS_MATCHES} matchs requis.` });
 
-  renderRanking(el.goalsForRanking, scoredRows.slice().sort((a, b) => avgGoalsFor(b) - avgGoalsFor(a) || b.goalsFor - a.goalsFor || a.name.localeCompare(b.name)), row => ({
+  renderRanking(el.goalsForRanking, qualifiedScoredRows.slice().sort((a, b) => avgGoalsFor(b) - avgGoalsFor(a) || b.goalsFor - a.goalsFor || a.name.localeCompare(b.name)), row => ({
     titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
     detail: `${row.goalsFor} but(s) marqué(s) · ${row.scoredMatches} match(s) scoré(s)`,
     value: `${formatDecimal(avgGoalsFor(row))}/m`
-  }));
+  }), { emptyMessage: `Aucun joueur avec un score enregistré n’a encore atteint les ${MIN_STATS_MATCHES} matchs requis.` });
 
-  renderRanking(el.goalsAgainstRanking, scoredRows.slice().sort((a, b) => avgGoalsAgainst(a) - avgGoalsAgainst(b) || a.goalsAgainst - b.goalsAgainst || a.name.localeCompare(b.name)), row => ({
+  renderRanking(el.goalsAgainstRanking, qualifiedScoredRows.slice().sort((a, b) => avgGoalsAgainst(a) - avgGoalsAgainst(b) || a.goalsAgainst - b.goalsAgainst || a.name.localeCompare(b.name)), row => ({
     titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
     detail: `${row.goalsAgainst} but(s) pris · ${row.scoredMatches} match(s) scoré(s)`,
     value: `${formatDecimal(avgGoalsAgainst(row))}/m`
-  }));
+  }), { emptyMessage: `Aucun joueur avec un score enregistré n’a encore atteint les ${MIN_STATS_MATCHES} matchs requis.` });
 
+  const qualifiedPlayerNames = new Set(qualifiedRows.map(row => normalizeName(row.name)));
   renderExtraStats(rows, events);
-  renderFunStats(events, eloMovementIndex, cumulativeAwards);
+  renderFunStats(events, eloMovementIndex, cumulativeAwards, qualifiedPlayerNames);
 }
 
 function getEligibleEloRows(monthKey) {
@@ -1682,7 +1692,7 @@ function renderRanking(container, rows, mapRow, options = {}) {
 
 function renderExtraStats(rows, events) {
   const activeRows = rows.filter(row => row.played > 0);
-  const scoredRows = rows.filter(row => row.scoredMatches > 0);
+  const scoredRows = rows.filter(row => row.played >= MIN_STATS_MATCHES && row.scoredMatches > 0);
 
   if (!activeRows.length) {
     el.extraStats.className = "summary-grid empty-state";
@@ -1696,7 +1706,7 @@ function renderExtraStats(rows, events) {
 
   const cards = [
     { label: "Plus actif", value: mostPlayed?.name || "-", detail: `${mostPlayed?.played || 0} match(s)` },
-    { label: "Meilleure différence", value: bestDiff?.name || "-", detail: bestDiff ? `Diff ${formatSigned(bestDiff.goalDiff)}` : "Aucun score" },
+    { label: "Meilleure différence", value: bestDiff?.name || "-", detail: bestDiff ? `Diff ${formatSigned(bestDiff.goalDiff)}` : `Minimum ${MIN_STATS_MATCHES} matchs` },
     { label: "Volume mensuel", value: `${events.length} match(s)`, detail: `${totalGoals} but(s) enregistré(s)` }
   ];
 
@@ -1712,15 +1722,15 @@ function renderExtraStats(rows, events) {
 }
 
 
-function renderFunStats(events, eloMovementIndex, cumulativeAwards) {
+function renderFunStats(events, eloMovementIndex, cumulativeAwards, qualifiedPlayerNames = new Set()) {
   const teammateImpact = buildTeammateEloImpact(events, eloMovementIndex);
   const shutouts = buildShutoutStats(events);
 
   const netBoosters = teammateImpact
-    .filter(row => row.netPartnerElo > 0)
+    .filter(row => qualifiedPlayerNames.has(normalizeName(row.name)) && row.netPartnerElo > 0)
     .sort((a, b) => b.netPartnerElo - a.netPartnerElo || b.winningMatches - a.winningMatches || a.name.localeCompare(b.name));
   const netAspirators = teammateImpact
-    .filter(row => row.netPartnerElo < 0)
+    .filter(row => qualifiedPlayerNames.has(normalizeName(row.name)) && row.netPartnerElo < 0)
     .sort((a, b) => a.netPartnerElo - b.netPartnerElo || b.losingMatches - a.losingMatches || a.name.localeCompare(b.name));
 
   renderRanking(
@@ -1731,7 +1741,7 @@ function renderFunStats(events, eloMovementIndex, cumulativeAwards) {
       detail: `Gagne le plus avec : ${formatNameCounts(row.gainPartners, 2)}`,
       value: `${formatSignedDecimal(row.netPartnerElo)} Elo`
     }),
-    { emptyMessage: "Aucun impact Elo net positif en 2v2 pour cette saison." }
+    { emptyMessage: "Aucun joueur qualifié avec un impact Elo net positif en 2v2 pour cette saison." }
   );
 
   renderRanking(
@@ -1742,29 +1752,29 @@ function renderFunStats(events, eloMovementIndex, cumulativeAwards) {
       detail: `Perd le plus avec : ${formatNameCounts(row.lossPartners, 2)}`,
       value: `${formatSignedDecimal(row.netPartnerElo)} Elo`
     }),
-    { emptyMessage: "Aucun impact Elo net négatif en 2v2 pour cette saison." }
+    { emptyMessage: "Aucun joueur qualifié avec un impact Elo net négatif en 2v2 pour cette saison." }
   );
 
   renderRanking(
     el.shutoutWinnersRanking,
-    shutouts.winners,
+    shutouts.winners.filter(row => qualifiedPlayerNames.has(normalizeName(row.name))),
     row => ({
       titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
       detail: `Victime(s) : ${formatNameCounts(row.opponents)}`,
       value: `${row.count} × 10–0`
     }),
-    { emptyMessage: "Aucun 10–0 infligé pour cette saison." }
+    { emptyMessage: "Aucun 10–0 infligé par un joueur qualifié pour cette saison." }
   );
 
   renderRanking(
     el.shutoutLosersRanking,
-    shutouts.losers,
+    shutouts.losers.filter(row => qualifiedPlayerNames.has(normalizeName(row.name))),
     row => ({
       titleHtml: renderPlayerNameWithAwards(row.name, cumulativeAwards),
       detail: `Bourreau(x) : ${formatNameCounts(row.opponents)}`,
       value: `${row.count} × 0–10`
     }),
-    { emptyMessage: "Aucun 0–10 subi pour cette saison." }
+    { emptyMessage: "Aucun 0–10 subi par un joueur qualifié pour cette saison." }
   );
 }
 

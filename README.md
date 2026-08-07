@@ -1,4 +1,4 @@
-# BabyFoot LEMO — version 3.3
+# BabyFoot LEMO — version 3.7
 
 Site statique pour Teams/GitHub Pages avec sauvegarde partagée dans Supabase.
 
@@ -95,3 +95,26 @@ Le navigateur doit utiliser uniquement `publishableKey` dans `config.js`. Une cl
 - Chaque ligne d’historique possède un bloc visible « Mouvements Elo ».
 - La correspondance utilise l’identifiant du match et une signature de secours (date, équipes, score et vainqueur).
 - Le classement conserve comme dernier mouvement celui du dernier match joué dans la saison.
+
+
+## Version 3.6 – Scores et statistiques avancées
+
+- Les scores des matchs directs et des matchs de championnat se sélectionnent désormais dans une liste de 0 à 10.
+- L’historique des matchs peut être trié par date, écart de score ou volume d’Elo gagné par le vainqueur (« vol d’Elo »).
+- Ajout de statistiques 2v2 sur l’impact Elo auprès des coéquipiers.
+- Ajout des classements des 10–0 infligés et des 0–10 subis, avec les adversaires concernés.
+
+
+## Version 3.7 – Impact Elo net
+
+- Un joueur ne peut plus apparaître à la fois dans les boosters et les aspirateurs : les gains et pertes d’Elo de ses coéquipiers sont compensés pour produire un impact net unique.
+- Un impact net positif apparaît dans « Booster net » ; un impact net négatif apparaît dans « Aspirateur net ».
+- Chaque ligne affiche uniquement les deux partenaires avec lesquels le joueur gagne ou perd le plus souvent.
+- Les cartes redondantes « Meilleure attaque », « Meilleure défense » et « Leader Elo » ont été retirées des autres statistiques.
+
+
+## Version 3.8 – Seuil de qualification et matchs joués
+
+- Ajout d’un classement « Nombre de parties jouées » visible dès le premier match.
+- Les classements de victoire, buts marqués, buts pris, différence de buts et statistiques ludiques n’affichent désormais que les joueurs ayant disputé au moins 5 matchs dans la saison mensuelle.
+- Le classement des parties jouées indique combien de matchs il manque avant d’atteindre le seuil de qualification.
